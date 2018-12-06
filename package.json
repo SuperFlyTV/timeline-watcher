@@ -70,12 +70,14 @@
     "node": ">=4.5"
   },
   "devDependencies": {
+    "@types/fabric": "^1.5.47",
     "@types/jest": "^23.1.0",
     "@types/node": "^8.0.4",
     "@types/underscore": "^1.8.8",
     "@types/winston": "^2.3.9",
     "codecov": "^3.0.2",
     "cpx": "^1.5.0",
+    "fabric": "^2.4.4",
     "gh-pages": "^1.2.0",
     "jest": "^23.1.0",
     "mkdirp": "^0.5.1",

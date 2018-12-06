@@ -4,8 +4,9 @@ import {
 	UnresolvedTimeline
 } from 'superfly-timeline'
 
+import { TimelineVisualizer } from './lib/timelineVisualiser'
 
-let myTimeline: UnresolvedTimeline =  [
+let myTimeline: UnresolvedTimeline = [
 	{
 		id: 'video0',
 		trigger: {
@@ -76,15 +77,19 @@ let myTimeline: UnresolvedTimeline =  [
 		LLayer: '$LmainLayer',
 		priority: 10,
 		content: {}
-	} 
+	}
 ]
-	
+
 // By resolving the timeline, the times of the objects are calculated:
-var tl = Resolver.getTimelineInWindow(myTimeline)
- 
+let tl = Resolver.getTimelineInWindow(myTimeline)
+
 // To see whats on right now, we fetch the State:
 let now = 3000
-var stateNow = Resolver.getState(tl, now)
+let stateNow = Resolver.getState(tl, now)
 
 console.log('Resolved timeline', tl)
 console.log('Resolved state', stateNow)
+
+let visuals = new TimelineVisualizer('timeline')
+
+visuals.setTimeline(myTimeline)
