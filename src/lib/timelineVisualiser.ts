@@ -21,6 +21,9 @@ export class TimelineVisualizer {
 	// Height of a timeline row, in pixels.
 	private rowHeight: number
 
+	// Store the last timeline drawn, for redrawing and comparisons.
+	private lastTimelineDrawn: ResolvedTimeline
+
 	// List of all objects displayed on the timeline.
 	private timeLineObjects: {[layer: string]: Array<fabric.Object>} = {}
 
@@ -36,6 +39,16 @@ export class TimelineVisualizer {
 	// Width of an object per unit time of duration.
 	private pixelsWidthPerUnitTime: number
 
+	// Store whether the mouse is held down, for scrolling.
+	private mouseDown: boolean
+
+	// Last x positions of the mouse cursor (on click and on drag), for scrolling.
+	private mouseLastClickX: number
+	private mouseLastX: number
+
+	// Last direction the user moved on the timeline, helps to smooth changing scroll direction.
+	private lastScrollDirection: number
+
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
@@ -46,6 +59,9 @@ export class TimelineVisualizer {
 		this.timeLineObjects['timeEvents'] = []
 		this.timeLineObjects['logicalEvents'] = []
 
+		// Initialise other values.
+		this.mouseDown = false
+
 		// Create new canvas object.
 		this.canvas = new fabric.Canvas(canvasId)
 
@@ -53,6 +69,12 @@ export class TimelineVisualizer {
 		this.canvas.selection = false
 		// Set cursor.
 		this.canvas.hoverCursor = 'default'
+
+		// Register canvas interaction event handlers.
+		this.canvas.on('mouse:down', event => this.canvasMouseDown(event))
+		this.canvas.on('mouse:up', event => this.canvasMouseUp(event))
+		this.canvas.on('mouse:move', event => this.canvasMouseMove(event))
+		this.canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
 
 		// Get width and height of canvas.
 		this.canvasWidth = this.canvas.getWidth()
@@ -96,6 +118,9 @@ export class TimelineVisualizer {
 		// If the timeline contains any objects, draw.
 		if (resolvedTimeline.resolved.length > 0) {
 			this.drawInitialTimeline(resolvedTimeline)
+
+			// Store last timeline drawn.
+			this.lastTimelineDrawn = resolvedTimeline
 		}
 	}
 
@@ -238,6 +263,90 @@ export class TimelineVisualizer {
 	}
 
 	/**
+	 * Redraws the timeline to the canvas.
+	 * @param {ResolvedTimeline} timeline Timeline to draw.
+	 */
+	redrawTimeline (timeline: ResolvedTimeline) {
+		// Remove previous timeline objects from the canvas.
+		this.timeLineObjects['timeEvents'].forEach(element => {
+			this.canvas.remove(element)
+		})
+
+		// Draw timeline.
+		this.drawTimeline(timeline)
+	}
+
+	/**
+	 * Draws a timeline to the canvas.
+	 * @param {ResolvedTimeline} timeline Timeline to draw.
+	 */
+	drawTimeline (timeline: ResolvedTimeline) {
+		// Don't draw an empty timeline.
+		if (timeline.resolved.length === 0) {
+			return
+		}
+
+		// Calculate how many pixels are required per unit time.
+		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
+
+		// Iterate through TimelineResolvedObject in timeline.
+		timeline.resolved.forEach(resolvedObject => {
+			if (this.showObjectOnTimeline(resolvedObject)) {
+				// Calculate object offset from timeline start.
+				let offsetFromStart = this.getResolvedObjectOffsetFromTimelineStart(resolvedObject)
+				// Calculate width of object.
+				let objectWidth = this.getResolvedObjectEndPointFromTimelineStart(resolvedObject)
+
+				// If the offset is less than 0, subtract from the width and set to 0.
+				if (offsetFromStart < 0) {
+					objectWidth += offsetFromStart
+					offsetFromStart = 0
+				}
+
+				// Create a rectangle representing object duration.
+				let resolvedObjectRect = new fabric.Rect({
+					left: this.timelineStart + offsetFromStart,
+					width: objectWidth,
+					height: this.rowHeight * (2 / 3),
+					top: this.getResolvedObjectTop(resolvedObject),
+					fill: 'rgba(105, 35, 140, 0.5)',
+					stroke: 'rgba(53, 17, 71, 0.5)',
+					strokeWidth: 1,
+					selectable: false
+				})
+
+				// Add a label to the rectangle containing the object ID.
+				let resolvedObjectLabel = new fabric.Text(resolvedObject.id, {
+					fontFamily: 'Calibri',
+					fontSize: 16,
+					textAlign: 'center',
+					fill: 'white',
+					selectable: false,
+					top: this.getResolvedObjectTop(resolvedObject),
+					left: this.timelineStart + offsetFromStart
+				})
+
+				if ((resolvedObjectLabel.width as number) <= (resolvedObjectRect.width as number)) {
+					// Group rectangle and label.
+					let resolvedObjectGroup = new fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
+						selectable: false
+					})
+
+					// Draw.
+					this.canvas.add(resolvedObjectGroup)
+					this.canvas.bringToFront(resolvedObjectGroup)
+					this.timeLineObjects['timeEvents'].push(resolvedObjectGroup)
+				} else {
+					// Draw.
+					this.canvas.add(resolvedObjectRect)
+					this.canvas.bringToFront(resolvedObjectRect)
+					this.timeLineObjects['timeEvents'].push(resolvedObjectRect)
+				}
+			}
+		})
+	}
+
+	/**
 	 * Finds the object with the earliest start time in a timeline and returns the time.
 	 * @param {ResolvedTimeline} timeline Timeline to search.
 	 * @returns Earliest starting time.
@@ -295,7 +404,37 @@ export class TimelineVisualizer {
 	 * @returns Offset in pixels.
 	 */
 	getResolvedObjectOffsetFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
-		return ((resolvedObject.resolved.startTime as number) - this.drawTimeStart) * this.pixelsWidthPerUnitTime
+		// Calculate offset.
+		let offset = ((resolvedObject.resolved.startTime as number) - this.drawTimeStart) * this.pixelsWidthPerUnitTime
+
+		// Offset cannot be to the left of the timeline start position.
+		if (offset < 0) {
+			offset = 0
+		}
+
+		return offset
+	}
+
+	/**
+	 * Gets the end postion of a timeline object, relative to the start of the timeline.
+	 * @param {TimelineResolvedObject} resolvedObject Object to calculate end position for.
+	 * @returns End position, in pixels, relative to timeline start.
+	 */
+	getResolvedObjectEndPointFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
+		// Get object start and end times.
+		let endTime = resolvedObject.resolved.endTime as number
+		let startTime = resolvedObject.resolved.startTime as number
+
+		// If the start time is less than the timeline start, set to timeline start.
+		if (startTime < this.drawTimeStart) {
+			startTime = this.drawTimeStart
+		}
+
+		// Calculate duration of the object remaining on the timeline.
+		let duration = endTime - startTime
+
+		// Return end point position in pixels.
+		return duration * this.pixelsWidthPerUnitTime
 	}
 
 	/**
@@ -305,6 +444,19 @@ export class TimelineVisualizer {
 	 */
 	getResolvedObjectWidth (resolvedObject: TimelineResolvedObject): number {
 		return (resolvedObject.resolved.outerDuration as number) * this.pixelsWidthPerUnitTime
+	}
+
+	/**
+	 * Determines whether to show an object on the timeline.
+	 * @param {TimelineResolvedObject} resolvedObject The object to check.
+	 * @returns {true} if resolvedObject should be shown on the timeline.
+	 */
+	showObjectOnTimeline (resolvedObject: TimelineResolvedObject): boolean {
+		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.drawTimeStart || (resolvedObject.resolved.endTime as number) <= this.drawTimeEnd
+		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.drawTimeStart
+		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.drawTimeEnd
+
+		return withinTimeline && !beforeTimeline && !afterTimeline
 	}
 
 	/**
@@ -321,5 +473,141 @@ export class TimelineVisualizer {
 		}
 
 		return top
+	}
+
+	/**
+	 * Handles mouse down event.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseDown (opt) {
+		// Extract event.
+		let event = opt.e
+
+		// Store mouse is down.
+		this.mouseDown = true
+
+		// Store X position of mouse on click.
+		this.mouseLastClickX = event.clientX
+
+		// Prevent event.
+		event.preventDefault()
+		event.stopPropagation()
+	}
+
+	/**
+	 * Handles mouse up event.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseUp (opt) {
+		// Mouse no longer down.
+		this.mouseDown = false
+		// Reset scroll direction.
+		this.lastScrollDirection = 0
+
+		// Prevent event.
+		opt.e.preventDefault()
+		opt.e.stopPropagation()
+	}
+
+	/**
+	 * Handles mouse movement on canvas.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseMove (opt) {
+		// If mouse is down.
+		if (this.mouseDown) {
+			// Extract event.
+			let event = opt.e
+
+			// If we are beginning scrolling, we can move freely.
+			if (this.lastScrollDirection === undefined || this.lastScrollDirection === 0) {
+				// Store current mouse X.
+				this.mouseLastX = event.clientX
+
+				// Calculate change in X.
+				let deltaX = event.clientX - this.mouseLastClickX
+
+				// Store scrolling direction.
+				if (deltaX < 0) {
+					this.lastScrollDirection = -1
+				} else {
+					this.lastScrollDirection = 1
+				}
+
+				// Scroll to new X position.
+				this.canvasScrollToX(deltaX)
+			} else {
+				// Calculate scroll direction.
+				let direction = this.mouseLastX - event.clientX
+
+				// If changing direction, store new direction but don't scroll.
+				if (direction < 0 && this.lastScrollDirection === 1) {
+					this.mouseLastClickX = event.clientX
+
+					this.lastScrollDirection = -1
+				} else if (direction > 0 && this.lastScrollDirection === -1) {
+					this.mouseLastClickX = event.clientX
+
+					this.lastScrollDirection = 1
+				} else {
+					// Calculate change in X.
+					let deltaX = event.clientX - this.mouseLastClickX
+
+					// Store last X position.
+					this.mouseLastX = event.clientX
+
+					// Move by change in X.
+					this.canvasScrollToX(deltaX)
+				}
+			}
+		}
+	}
+
+	/**
+	 * Handles scroll wheel events on the canvas.
+	 * @param opt Scroll event.
+	 */
+	canvasScrollWheel (opt) {
+		// Extract event.
+		let event = opt.e
+
+		// Optimisation, don't rerender if no x-axis scrolling has occurred.
+		if (event.deltaX !== 0) {
+			// Pan.
+			this.canvasScrollToX(event.deltaX * 10)
+		}
+
+		// Prevent event.
+		event.preventDefault()
+		event.stopPropagation()
+	}
+
+	/**
+	 * Scroll across the canvas by a specified X value.
+	 * @param {number} deltaX Value to move by.
+	 */
+	canvasScrollToX (deltaX: number): void {
+		// Calculate new starting time.
+		let targetStart = this.drawTimeStart + deltaX
+
+		// Starting time cannot be < 0.
+		if (targetStart < 0) {
+			targetStart = 0
+		}
+
+		// Optimisation, don't redraw if nothing has changed.
+		if (targetStart === this.drawTimeStart) {
+			return
+		}
+
+		// Calculate end point.
+		let targetEnd = targetStart + (this.drawTimeEnd - this.drawTimeStart)
+
+		// Update timeline start and end values.
+		this.drawTimeStart = targetStart
+		this.drawTimeEnd = targetEnd
+
+		// Redraw timeline.
+		this.redrawTimeline(this.lastTimelineDrawn)
 	}
 }
