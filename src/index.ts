@@ -4,7 +4,7 @@ import {
 	UnresolvedTimeline
 } from 'superfly-timeline'
 
-import { TimelineVisualizer } from './lib/timelineVisualiser'
+import { TimelineVisualizer } from './lib/timelineVisualizer'
 
 let myTimeline: UnresolvedTimeline = [
 	{
