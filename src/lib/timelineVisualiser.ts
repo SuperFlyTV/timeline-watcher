@@ -36,6 +36,10 @@ export class TimelineVisualizer {
 	private drawTimeStart: number
 	private drawTimeEnd: number
 
+	// Scaled timeline start and end, according to zoom.
+	private scaledDrawTimeStart: number
+	private scaledDrawTimeEnd: number
+
 	// Width of an object per unit time of duration.
 	private pixelsWidthPerUnitTime: number
 
@@ -49,6 +53,9 @@ export class TimelineVisualizer {
 	// Last direction the user moved on the timeline, helps to smooth changing scroll direction.
 	private lastScrollDirection: number
 
+	// Current zoom amount.
+	private timelineZoom: number
+
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
@@ -61,6 +68,7 @@ export class TimelineVisualizer {
 
 		// Initialise other values.
 		this.mouseDown = false
+		this.timelineZoom = 100
 
 		// Create new canvas object.
 		this.canvas = new fabric.Canvas(canvasId)
@@ -222,6 +230,9 @@ export class TimelineVisualizer {
 		this.drawTimeStart = this.findMinStartTime(timeline)
 		this.drawTimeEnd = this.findMaxEndTime(timeline)
 
+		// Calculate new zoom values.
+		this.updateZoomValues()
+
 		this.drawTimeline(timeline)
 	}
 
@@ -250,7 +261,7 @@ export class TimelineVisualizer {
 		}
 
 		// Calculate how many pixels are required per unit time.
-		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
+		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.scaledDrawTimeEnd - this.scaledDrawTimeStart)
 
 		// Iterate through TimelineResolvedObject in timeline.
 		timeline.resolved.forEach(resolvedObject => {
@@ -368,7 +379,7 @@ export class TimelineVisualizer {
 	 */
 	getResolvedObjectOffsetFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
 		// Calculate offset.
-		let offset = ((resolvedObject.resolved.startTime as number) - this.drawTimeStart) * this.pixelsWidthPerUnitTime
+		let offset = ((resolvedObject.resolved.startTime as number) - this.scaledDrawTimeStart) * this.pixelsWidthPerUnitTime
 
 		// Offset cannot be to the left of the timeline start position.
 		if (offset < 0) {
@@ -389,8 +400,8 @@ export class TimelineVisualizer {
 		let startTime = resolvedObject.resolved.startTime as number
 
 		// If the start time is less than the timeline start, set to timeline start.
-		if (startTime < this.drawTimeStart) {
-			startTime = this.drawTimeStart
+		if (startTime < this.scaledDrawTimeStart) {
+			startTime = this.scaledDrawTimeStart
 		}
 
 		// Calculate duration of the object remaining on the timeline.
@@ -415,9 +426,9 @@ export class TimelineVisualizer {
 	 * @returns {true} if resolvedObject should be shown on the timeline.
 	 */
 	showObjectOnTimeline (resolvedObject: TimelineResolvedObject): boolean {
-		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.drawTimeStart || (resolvedObject.resolved.endTime as number) <= this.drawTimeEnd
-		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.drawTimeStart
-		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.drawTimeEnd
+		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.scaledDrawTimeStart || (resolvedObject.resolved.endTime as number) <= this.scaledDrawTimeEnd
+		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.scaledDrawTimeStart
+		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.scaledDrawTimeEnd
 
 		return withinTimeline && !beforeTimeline && !afterTimeline
 	}
@@ -540,6 +551,24 @@ export class TimelineVisualizer {
 			this.canvasScrollToX(event.deltaX * 10)
 		}
 
+		// CTRL + scroll to zoom.
+		if (event.ctrlKey === true) {
+			// If scrolling "up".
+			if (event.deltaY > 0) {
+				// Zoom in.
+				this.timelineZoom = Math.max(this.timelineZoom - 10, 50)
+
+				this.updateZoomValues()
+				this.redrawTimeline(this.lastTimelineDrawn)
+			} else if (event.deltaY < 0) {
+				// Zoom out.
+				this.timelineZoom = Math.min(this.timelineZoom + 10, 1000)
+
+				this.updateZoomValues()
+				this.redrawTimeline(this.lastTimelineDrawn)
+			}
+		}
+
 		// Prevent event.
 		event.preventDefault()
 		event.stopPropagation()
@@ -570,7 +599,18 @@ export class TimelineVisualizer {
 		this.drawTimeStart = targetStart
 		this.drawTimeEnd = targetEnd
 
+		// Update zoom.
+		this.updateZoomValues()
+
 		// Redraw timeline.
 		this.redrawTimeline(this.lastTimelineDrawn)
+	}
+
+	/**
+	 * Calculates the new scaled timeline start and end times according to the current zoom value.
+	 */
+	updateZoomValues () {
+		this.scaledDrawTimeStart = this.drawTimeStart / (this.timelineZoom / 100)
+		this.scaledDrawTimeEnd = this.drawTimeEnd * (this.timelineZoom / 100)
 	}
 }
