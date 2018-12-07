@@ -222,44 +222,7 @@ export class TimelineVisualizer {
 		this.drawTimeStart = this.findMinStartTime(timeline)
 		this.drawTimeEnd = this.findMaxEndTime(timeline)
 
-		// Calculate how many pixels are required per unit time.
-		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
-
-		// Iterate through TimelineResolvedObject in timeline.
-		timeline.resolved.forEach(resolvedObject => {
-			// Create a rectangle representing object duration.
-			let resolvedObjectRect = new fabric.Rect({
-				left: this.timelineStart + this.getResolvedObjectOffsetFromTimelineStart(resolvedObject),
-				width: this.getResolvedObjectWidth(resolvedObject),
-				height: this.rowHeight * (2 / 3),
-				top: this.getResolvedObjectTop(resolvedObject),
-				fill: 'rgba(105, 35, 140, 0.5)',
-				stroke: 'rgba(53, 17, 71, 0.5)',
-				strokeWidth: 1,
-				selectable: false
-			})
-
-			// Add a label to the rectangle containing the object ID.
-			let resolvedObjectLabel = new fabric.Text(resolvedObject.id, {
-				fontFamily: 'Calibri',
-				fontSize: 16,
-				textAlign: 'right',
-				fill: 'white',
-				selectable: false,
-				top: this.getResolvedObjectTop(resolvedObject),
-				left: this.timelineStart + this.getResolvedObjectOffsetFromTimelineStart(resolvedObject)
-			})
-
-			// Group rectangle and label.
-			let resolvedObjectGroup = new fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
-				selectable: false
-			})
-
-			// Draw.
-			this.canvas.add(resolvedObjectGroup)
-			this.canvas.bringToFront(resolvedObjectGroup)
-			this.timeLineObjects['timeEvents'].push(resolvedObjectGroup)
-		})
+		this.drawTimeline(timeline)
 	}
 
 	/**
