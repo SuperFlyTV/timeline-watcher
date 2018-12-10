@@ -136,6 +136,24 @@ export class TimelineVisualizer {
 	}
 
 	/**
+	 * Updates the timeline, should be called when actions are added/removed from a timeline
+	 * but the same timeline is being drawn.
+	 * @param timeline Timeline to draw.
+	 */
+	updateTimeline (timeline: UnresolvedTimeline) {
+		// Resolve the timeline.
+		let resolvedTimeline = Resolver.getTimelineInWindow(timeline)
+
+		// If the timeline contains any objects, draw.
+		if (resolvedTimeline.resolved.length > 0) {
+			this.redrawTimeline(resolvedTimeline)
+
+			// Store last timeline drawn.
+			this.lastTimelineDrawn = resolvedTimeline
+		}
+	}
+
+	/**
 	 * Gets the layers used by a timeline.
 	 * @param timeline Timeline being displayed.
 	 * @returns {<Array<string>} Array of layer names.
