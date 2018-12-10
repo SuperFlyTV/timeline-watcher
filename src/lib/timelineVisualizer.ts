@@ -5,6 +5,8 @@ import { Resolver, ResolvedTimeline, TimelineResolvedObject, TriggerType, Unreso
 export class TimelineVisualizer {
 	 /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
 	private readonly layerLabelWidthProportionOfCanvas = 0.25
+	/** @private @readonly Default time range to display. */
+	private readonly defaultDrawRange = 5000
 
 	// List of layers to display.
 	private layers: Array<string> = ['mainLayer', 'graphicsLayer', 'DSK', 'PSALayer']
@@ -35,10 +37,11 @@ export class TimelineVisualizer {
 	// Start and end time of the current view. Defines the objects within view on the timeline.
 	private drawTimeStart: number
 	private drawTimeEnd: number
+	// Current range of times to draw.
+	private drawTimeRange: number
 
 	// Scaled timeline start and end, according to zoom.
-	private scaledDrawTimeStart: number
-	private scaledDrawTimeEnd: number
+	private scaledDrawTimeRange: number
 
 	// Width of an object per unit time of duration.
 	private pixelsWidthPerUnitTime: number
@@ -225,13 +228,16 @@ export class TimelineVisualizer {
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 */
 	drawInitialTimeline (timeline: ResolvedTimeline) {
-		// Find the min and max start times, so that the view starts with
-		// all of the timeline in view
-		this.drawTimeStart = this.findMinStartTime(timeline)
-		this.drawTimeEnd = this.findMaxEndTime(timeline)
+		// Set time range.
+		this.drawTimeRange = this.defaultDrawRange
 
 		// Calculate new zoom values.
-		this.updateZoomValues()
+		// this.updateZoomValues()
+		this.updateScaledDrawTimeRange()
+
+		// Set timeline start and end times.
+		this.drawTimeStart = 0
+		this.drawTimeEnd = this.drawTimeStart + this.scaledDrawTimeRange
 
 		this.drawTimeline(timeline)
 	}
@@ -261,7 +267,7 @@ export class TimelineVisualizer {
 		}
 
 		// Calculate how many pixels are required per unit time.
-		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.scaledDrawTimeEnd - this.scaledDrawTimeStart)
+		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
 
 		// Iterate through TimelineResolvedObject in timeline.
 		timeline.resolved.forEach(resolvedObject => {
@@ -379,7 +385,7 @@ export class TimelineVisualizer {
 	 */
 	getResolvedObjectOffsetFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
 		// Calculate offset.
-		let offset = ((resolvedObject.resolved.startTime as number) - this.scaledDrawTimeStart) * this.pixelsWidthPerUnitTime
+		let offset = ((resolvedObject.resolved.startTime as number) - this.drawTimeStart) * this.pixelsWidthPerUnitTime
 
 		// Offset cannot be to the left of the timeline start position.
 		if (offset < 0) {
@@ -400,8 +406,8 @@ export class TimelineVisualizer {
 		let startTime = resolvedObject.resolved.startTime as number
 
 		// If the start time is less than the timeline start, set to timeline start.
-		if (startTime < this.scaledDrawTimeStart) {
-			startTime = this.scaledDrawTimeStart
+		if (startTime < this.drawTimeStart) {
+			startTime = this.drawTimeStart
 		}
 
 		// Calculate duration of the object remaining on the timeline.
@@ -426,11 +432,13 @@ export class TimelineVisualizer {
 	 * @returns {true} if resolvedObject should be shown on the timeline.
 	 */
 	showObjectOnTimeline (resolvedObject: TimelineResolvedObject): boolean {
-		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.scaledDrawTimeStart || (resolvedObject.resolved.endTime as number) <= this.scaledDrawTimeEnd
-		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.scaledDrawTimeStart
-		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.scaledDrawTimeEnd
+		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.drawTimeStart || (resolvedObject.resolved.endTime as number) <= this.drawTimeEnd
+		let duringTimeline = this.drawTimeStart > (resolvedObject.resolved.startTime as number) && this.drawTimeEnd < (resolvedObject.resolved.endTime as number)
+		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.drawTimeStart
+		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.drawTimeEnd
 
-		return withinTimeline && !beforeTimeline && !afterTimeline
+		// return withinTimeline && !beforeTimeline && !afterTimeline
+		return (withinTimeline || duringTimeline) && !beforeTimeline && !afterTimeline
 	}
 
 	/**
@@ -509,7 +517,7 @@ export class TimelineVisualizer {
 				}
 
 				// Scroll to new X position.
-				this.canvasScrollToX(deltaX)
+				this.canvasScrollByDeltaX(deltaX)
 			} else {
 				// Calculate scroll direction.
 				let direction = this.mouseLastX - event.clientX
@@ -531,7 +539,7 @@ export class TimelineVisualizer {
 					this.mouseLastX = event.clientX
 
 					// Move by change in X.
-					this.canvasScrollToX(deltaX)
+					this.canvasScrollByDeltaX(deltaX)
 				}
 			}
 		}
@@ -545,10 +553,12 @@ export class TimelineVisualizer {
 		// Extract event.
 		let event = opt.e
 
-		// Optimisation, don't rerender if no x-axis scrolling has occurred.
-		if (event.deltaX !== 0) {
-			// Pan.
-			this.canvasScrollToX(event.deltaX * 10)
+		// Get mouse pointer coordinates on canvas.
+		let canvasCoord = this.canvas.getPointer(event.e)
+
+		// Don't scroll if mouse is not over timeline.
+		if (canvasCoord.x <= this.timelineStart) {
+			return
 		}
 
 		// CTRL + scroll to zoom.
@@ -558,15 +568,20 @@ export class TimelineVisualizer {
 				// Zoom in.
 				this.timelineZoom = Math.max(this.timelineZoom - 10, 50)
 
-				this.updateZoomValues()
+				// Zoom relative to cursor position.
+				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline(this.lastTimelineDrawn)
 			} else if (event.deltaY < 0) {
 				// Zoom out.
 				this.timelineZoom = Math.min(this.timelineZoom + 10, 1000)
 
-				this.updateZoomValues()
+				// Zoom relative to cursor position.
+				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline(this.lastTimelineDrawn)
 			}
+		} else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
+			// Pan.
+			this.canvasScrollByDeltaX(event.deltaX * 10)
 		}
 
 		// Prevent event.
@@ -578,7 +593,7 @@ export class TimelineVisualizer {
 	 * Scroll across the canvas by a specified X value.
 	 * @param {number} deltaX Value to move by.
 	 */
-	canvasScrollToX (deltaX: number): void {
+	canvasScrollByDeltaX (deltaX: number) {
 		// Calculate new starting time.
 		let targetStart = this.drawTimeStart + deltaX
 
@@ -593,14 +608,11 @@ export class TimelineVisualizer {
 		}
 
 		// Calculate end point.
-		let targetEnd = targetStart + (this.drawTimeEnd - this.drawTimeStart)
+		let targetEnd = targetStart + this.scaledDrawTimeRange
 
 		// Update timeline start and end values.
 		this.drawTimeStart = targetStart
 		this.drawTimeEnd = targetEnd
-
-		// Update zoom.
-		this.updateZoomValues()
 
 		// Redraw timeline.
 		this.redrawTimeline(this.lastTimelineDrawn)
@@ -609,8 +621,70 @@ export class TimelineVisualizer {
 	/**
 	 * Calculates the new scaled timeline start and end times according to the current zoom value.
 	 */
-	updateZoomValues () {
-		this.scaledDrawTimeStart = this.drawTimeStart / (this.timelineZoom / 100)
-		this.scaledDrawTimeEnd = this.drawTimeEnd * (this.timelineZoom / 100)
+	updateScaledDrawTimeRange () {
+		this.scaledDrawTimeRange = this.drawTimeRange * (this.timelineZoom / 100)
+	}
+
+	/**
+	 * Zooms into/out of timeline, keeping the time under the cursor in the same position.
+	 * @param cursorX Position of mouse cursor.
+	 */
+	zoomUnderCursor (cursorX: number) {
+		// Get time under cursor.
+		let coordToTime = this.cursorPosToTime(cursorX)
+
+		// Calculate position of mouse relative to edges of timeline.
+		let ratio = this.getCursorPositionAcrossTimeline(cursorX)
+
+		// Set zoom values.
+		this.updateScaledDrawTimeRange()
+
+		// Calculate start and end values.
+		let targetStart = coordToTime - (ratio * this.scaledDrawTimeRange)
+		let targetEnd = targetStart + this.scaledDrawTimeRange
+
+		// Start cannot be less than 0 but we must preserve the time range to draw.
+		if (targetStart < 0) {
+			let diff = -targetStart
+			targetStart = 0
+			targetEnd += diff
+		}
+
+		// Set draw times.
+		this.drawTimeStart = targetStart
+		this.drawTimeEnd = targetEnd
+	}
+
+	/**
+	 * Gets the current time under the mouse cursor.
+	 * @param cursorX Mouse cursor position (x-axis).
+	 * @returns Time under cursor, or -1 if the cursor is not over the timeline.
+	 */
+	cursorPosToTime (cursorX: number): number {
+		// Check if over timeline.
+		if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+			return -1
+		}
+
+		let ratio = this.getCursorPositionAcrossTimeline(cursorX)
+
+		return this.drawTimeStart + (this.scaledDrawTimeRange * ratio)
+	}
+
+	/**
+	 * Gets the position of the mouse cursor as a percentage of the width of the timeline.
+	 * @param cursorX Mouse cursor position.
+	 * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
+	 */
+	getCursorPositionAcrossTimeline (cursorX: number): number {
+		// Check if over timeline.
+		if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+			return -1
+		}
+
+		let diffX = cursorX - this.timelineStart
+		let ratio = diffX / this.timelineWidth
+
+		return ratio
 	}
 }
