@@ -2,7 +2,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const superfly_timeline_1 = require("superfly-timeline");
-const timelineVisualiser_1 = require("./lib/timelineVisualiser");
+const timelineVisualizer_1 = require("./lib/timelineVisualizer");
 let myTimeline = [
     {
         id: 'video0',
@@ -52,7 +52,7 @@ let myTimeline = [
         id: 'bgLoop',
         trigger: {
             type: superfly_timeline_1.Enums.TriggerType.LOGICAL,
-            value: '!$LLayer0'
+            value: '!$LmainLayer'
         },
         LLayer: '$LmainLayer',
         content: {}
@@ -76,21 +76,140 @@ let myTimeline = [
         content: {}
     }
 ];
+let anotherTimeline = [
+    {
+        id: 'video0',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.TIME_ABSOLUTE,
+            value: 1000
+        },
+        duration: 10 * 1000,
+        LLayer: 'mainLayer',
+        content: {}
+    }, {
+        id: 'video1',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.TIME_ABSOLUTE,
+            value: 9000
+        },
+        duration: 31 * 1000,
+        LLayer: 'mainLayer',
+        content: {}
+    }, {
+        id: 'graphics0',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.TIME_RELATIVE,
+            value: '#video1.start + 1000'
+        },
+        duration: 10 * 1000,
+        LLayer: 'graphicsLayer',
+        content: {}
+    }, {
+        id: 'graphics1',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.TIME_RELATIVE,
+            value: '#video1.start + 15000'
+        },
+        duration: '#video1.end - #graphics1.start',
+        LLayer: 'graphicsLayer',
+        content: {}
+    }, {
+        id: 'graphicsKey0',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.LOGICAL,
+            value: '$LgraphicsLayer & !$LPSALayer'
+        },
+        LLayer: 'DSK',
+        content: {}
+    }, {
+        id: 'bgLoop',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.LOGICAL,
+            value: '!$LmainLayer'
+        },
+        LLayer: 'mainLayer',
+        content: {}
+    }, {
+        id: 'importantMessage',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.TIME_ABSOLUTE,
+            value: 15000
+        },
+        duration: 10 * 1000,
+        LLayer: 'PSALayer',
+        content: {}
+    }, {
+        id: 'psaLoop',
+        trigger: {
+            type: superfly_timeline_1.Enums.TriggerType.LOGICAL,
+            value: '$LPSALayer'
+        },
+        LLayer: 'mainLayer',
+        priority: 10,
+        content: {}
+    }
+];
 // By resolving the timeline, the times of the objects are calculated:
 let tl = superfly_timeline_1.Resolver.getTimelineInWindow(myTimeline);
+let otl = superfly_timeline_1.Resolver.getTimelineInWindow(anotherTimeline);
 // To see whats on right now, we fetch the State:
 let now = 3000;
 let stateNow = superfly_timeline_1.Resolver.getState(tl, now);
 console.log('Resolved timeline', tl);
 console.log('Resolved state', stateNow);
-let visuals = new timelineVisualiser_1.TimelineVisualizer('timeline');
-visuals.setTimeline(myTimeline);
+console.log('Other resolved state', otl);
+let visuals = new timelineVisualizer_1.TimelineVisualizer('timeline');
+visuals.setTimeline(anotherTimeline);
 
-},{"./lib/timelineVisualiser":2,"superfly-timeline":5}],2:[function(require,module,exports){
+},{"./lib/timelineVisualizer":2,"superfly-timeline":5}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const fabric_1 = require("fabric");
 const superfly_timeline_1 = require("superfly-timeline");
+// import { createWorker } from 'typed-web-workers'
+class LogicalObjectDrawTime {
+}
+/*const worker = createWorker(
+    (input: { timeline: UnresolvedTimeline, logicalObjects: TimelineObject[], start: number, end: number }, cb) => cb(processLogicalObjects(input.timeline, input.logicalObjects, input.start, input.end))
+)*/
+/*function processLogicalObjects (timeline: UnresolvedTimeline, logicalObjectsToDraw: TimelineObject[], start: number, end: number) {
+    let logicalObjectsActiveTimes: { [objName: string]: Array<LogicalObjectDrawTime> } = { '': [] }
+    let logicalObjectsLastState: { [objName: string]: boolean } = { '': false }
+
+    for (let _i = start; _i <= end; _i++) {
+        let timeLineState: TimelineState = Resolver.getState(timeline, _i)
+
+        logicalObjectsToDraw.forEach(obj => {
+            let objectState = Resolver.decipherLogicalValue(obj.trigger.value, obj, timeLineState, false) as boolean
+            if (logicalObjectsActiveTimes[obj.id as string] !== undefined) {
+                if (objectState !== logicalObjectsLastState[obj.id as string] as boolean) {
+                    if (objectState === true) {
+                        let drawTime = new LogicalObjectDrawTime()
+                        drawTime.start = _i
+                        logicalObjectsActiveTimes[obj.id as string].push(drawTime)
+                    } else {
+                        let drawTime = logicalObjectsActiveTimes[obj.id as string].pop() as LogicalObjectDrawTime
+                        drawTime.end = _i - 1
+                        logicalObjectsActiveTimes[obj.id as string].push(drawTime)
+                    }
+                }
+
+                logicalObjectsLastState[obj.id as string] = objectState
+            } else {
+                logicalObjectsActiveTimes[obj.id as string] = []
+                logicalObjectsLastState[obj.id as string] = objectState
+
+                if (objectState === true) {
+                    let drawTime = new LogicalObjectDrawTime()
+                    drawTime.start = _i
+                    logicalObjectsActiveTimes[obj.id].push(drawTime)
+                }
+            }
+        })
+    }
+
+    return logicalObjectsActiveTimes
+}*/
 class TimelineVisualizer {
     /**
      * @param {string} canvasId The ID of the canvas object to draw within.
@@ -98,6 +217,8 @@ class TimelineVisualizer {
     constructor(canvasId) {
         /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
         this.layerLabelWidthProportionOfCanvas = 0.25;
+        /** @private @readonly Default time range to display. */
+        this.defaultDrawRange = 5000;
         // List of layers to display.
         this.layers = ['mainLayer', 'graphicsLayer', 'DSK', 'PSALayer'];
         // List of all objects displayed on the timeline.
@@ -107,12 +228,20 @@ class TimelineVisualizer {
         this.timeLineObjects['layerLabels'] = [];
         this.timeLineObjects['timeEvents'] = [];
         this.timeLineObjects['logicalEvents'] = [];
+        // Initialise other values.
+        this.mouseDown = false;
+        this.timelineZoom = 100;
         // Create new canvas object.
         this.canvas = new fabric_1.fabric.Canvas(canvasId);
         // Disable group selection.
         this.canvas.selection = false;
         // Set cursor.
         this.canvas.hoverCursor = 'default';
+        // Register canvas interaction event handlers.
+        this.canvas.on('mouse:down', event => this.canvasMouseDown(event));
+        this.canvas.on('mouse:up', event => this.canvasMouseUp(event));
+        this.canvas.on('mouse:move', event => this.canvasMouseMove(event));
+        this.canvas.on('mouse:wheel', event => this.canvasScrollWheel(event));
         // Get width and height of canvas.
         this.canvasWidth = this.canvas.getWidth();
         this.canvasHeight = this.canvas.getHeight();
@@ -140,6 +269,7 @@ class TimelineVisualizer {
     setTimeline(timeline) {
         // Resolve timeline.
         let resolvedTimeline = superfly_timeline_1.Resolver.getTimelineInWindow(timeline);
+        // processLogicalObjects(timeline, this.getLogicalObjectsFromTimeline(resolvedTimeline), 0, this.findMaxEndTime(resolvedTimeline))
         // Calculate height of rows based on number of layers.
         // In future layers will be pulled from the timeline.
         this.rowHeight = this.calculateRowHeight(this.layers);
@@ -148,6 +278,27 @@ class TimelineVisualizer {
         // If the timeline contains any objects, draw.
         if (resolvedTimeline.resolved.length > 0) {
             this.drawInitialTimeline(resolvedTimeline);
+            let stateChanges = this.getStateChangesFromTimeline(resolvedTimeline);
+            let logicalDrawTimes = this.resolveLogicalObjects(resolvedTimeline, stateChanges);
+            this.drawLogicalObjects(resolvedTimeline, logicalDrawTimes);
+            // Store last timeline drawn.
+            this.lastTimelineDrawn = resolvedTimeline;
+            this.logicalObjectsDrawn = logicalDrawTimes;
+        }
+    }
+    /**
+     * Updates the timeline, should be called when actions are added/removed from a timeline
+     * but the same timeline is being drawn.
+     * @param timeline Timeline to draw.
+     */
+    updateTimeline(timeline) {
+        // Resolve the timeline.
+        let resolvedTimeline = superfly_timeline_1.Resolver.getTimelineInWindow(timeline);
+        // If the timeline contains any objects, draw.
+        if (resolvedTimeline.resolved.length > 0) {
+            this.redrawTimeline(resolvedTimeline);
+            // Store last timeline drawn.
+            this.lastTimelineDrawn = resolvedTimeline;
         }
     }
     /**
@@ -164,6 +315,83 @@ class TimelineVisualizer {
             }
         });
         return layers;
+    }
+    getLogicalObjectsFromTimeline(timeline) {
+        let objects = [];
+        timeline.unresolved.forEach(obj => {
+            if (obj.trigger.type === superfly_timeline_1.TriggerType.LOGICAL) {
+                objects.push(obj);
+            }
+        });
+        return objects;
+    }
+    getStateChangesFromTimeline(timeline) {
+        let changesOfState = [];
+        changesOfState.push(0);
+        timeline.resolved.forEach(obj => {
+            let startTime = obj.resolved.startTime;
+            let endTime = obj.resolved.endTime;
+            if (changesOfState.indexOf(startTime) === -1) {
+                changesOfState.push(startTime);
+                if (changesOfState.indexOf(startTime - 1) === -1) {
+                    changesOfState.push(startTime - 1);
+                }
+                if (changesOfState.indexOf(startTime + 1) === -1) {
+                    changesOfState.push(startTime + 1);
+                }
+            }
+            if (changesOfState.indexOf(endTime) === -1) {
+                changesOfState.push(endTime);
+                if (changesOfState.indexOf(endTime - 1) === -1) {
+                    changesOfState.push(endTime - 1);
+                }
+                if (changesOfState.indexOf(endTime + 1) === -1) {
+                    changesOfState.push(endTime + 1);
+                }
+            }
+        });
+        let max = this.findMaxEndTime(timeline);
+        if (changesOfState.indexOf(max) === -1) {
+            changesOfState.push(max);
+        }
+        return changesOfState.sort(function (a, b) {
+            return a - b;
+        });
+    }
+    resolveLogicalObjects(timeline, changesOfState) {
+        let logicalObjectsActiveTimes = { '': [] };
+        let logicalObjectsLastState = { '': false };
+        changesOfState.forEach(time => {
+            let timeLineState = superfly_timeline_1.Resolver.getState(timeline, time);
+            timeline.unresolved.forEach(obj => {
+                let objectState = superfly_timeline_1.Resolver.decipherLogicalValue(obj.trigger.value, obj, timeLineState, false);
+                if (logicalObjectsActiveTimes[obj.id] !== undefined) {
+                    if (objectState !== logicalObjectsLastState[obj.id]) {
+                        if (objectState === true) {
+                            let drawTime = new LogicalObjectDrawTime();
+                            drawTime.start = time;
+                            logicalObjectsActiveTimes[obj.id].push(drawTime);
+                        }
+                        else {
+                            let drawTime = logicalObjectsActiveTimes[obj.id].pop();
+                            drawTime.end = time - 1;
+                            logicalObjectsActiveTimes[obj.id].push(drawTime);
+                        }
+                    }
+                    logicalObjectsLastState[obj.id] = objectState;
+                }
+                else {
+                    logicalObjectsActiveTimes[obj.id] = [];
+                    logicalObjectsLastState[obj.id] = objectState;
+                    if (objectState === true) {
+                        let drawTime = new LogicalObjectDrawTime();
+                        drawTime.start = time;
+                        logicalObjectsActiveTimes[obj.id].push(drawTime);
+                    }
+                }
+            });
+        });
+        return logicalObjectsActiveTimes;
     }
     /**
      * Calculates the height to give to each row to fit all layers on screen.
@@ -234,44 +462,155 @@ class TimelineVisualizer {
      * @param {ResolvedTimeline} timeline Timeline to draw.
      */
     drawInitialTimeline(timeline) {
-        // Find the min and max start times, so that the view starts with
-        // all of the timeline in view
-        this.drawTimeStart = this.findMinStartTime(timeline);
-        this.drawTimeEnd = this.findMaxEndTime(timeline);
+        // Set time range.
+        this.drawTimeRange = this.defaultDrawRange;
+        // Calculate new zoom values.
+        // this.updateZoomValues()
+        this.updateScaledDrawTimeRange();
+        // Set timeline start and end times.
+        this.drawTimeStart = 0;
+        this.drawTimeEnd = this.drawTimeStart + this.scaledDrawTimeRange;
+        this.drawTimeline(timeline);
+    }
+    /**
+     * Redraws the timeline to the canvas.
+     * @param {ResolvedTimeline} timeline Timeline to draw.
+     */
+    redrawTimeline(timeline) {
+        // Remove previous timeline objects from the canvas.
+        this.timeLineObjects['timeEvents'].forEach(element => {
+            this.canvas.remove(element);
+        });
+        this.timeLineObjects['logicalEvents'].forEach(element => {
+            this.canvas.remove(element);
+        });
+        // Draw timeline.
+        this.drawTimeline(timeline);
+        this.drawLogicalObjects(timeline, this.logicalObjectsDrawn);
+    }
+    /**
+     * Draws a timeline to the canvas.
+     * @param {ResolvedTimeline} timeline Timeline to draw.
+     */
+    drawTimeline(timeline) {
+        // Don't draw an empty timeline.
+        if (timeline.resolved.length === 0) {
+            return;
+        }
         // Calculate how many pixels are required per unit time.
         this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart);
         // Iterate through TimelineResolvedObject in timeline.
         timeline.resolved.forEach(resolvedObject => {
-            // Create a rectangle representing object duration.
-            let resolvedObjectRect = new fabric_1.fabric.Rect({
-                left: this.timelineStart + this.getResolvedObjectOffsetFromTimelineStart(resolvedObject),
-                width: this.getResolvedObjectWidth(resolvedObject),
-                height: this.rowHeight * (2 / 3),
-                top: this.getResolvedObjectTop(resolvedObject),
-                fill: 'rgba(105, 35, 140, 0.5)',
-                stroke: 'rgba(53, 17, 71, 0.5)',
-                strokeWidth: 1,
-                selectable: false
-            });
-            // Add a label to the rectangle containing the object ID.
-            let resolvedObjectLabel = new fabric_1.fabric.Text(resolvedObject.id, {
-                fontFamily: 'Calibri',
-                fontSize: 16,
-                textAlign: 'right',
-                fill: 'white',
-                selectable: false,
-                top: this.getResolvedObjectTop(resolvedObject),
-                left: this.timelineStart + this.getResolvedObjectOffsetFromTimelineStart(resolvedObject)
-            });
-            // Group rectangle and label.
-            let resolvedObjectGroup = new fabric_1.fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
-                selectable: false
-            });
-            // Draw.
-            this.canvas.add(resolvedObjectGroup);
-            this.canvas.bringToFront(resolvedObjectGroup);
-            this.timeLineObjects['timeEvents'].push(resolvedObjectGroup);
+            if (this.showObjectOnTimeline(resolvedObject)) {
+                // Calculate object offset from timeline start.
+                let offsetFromStart = this.getResolvedObjectOffsetFromTimelineStart(resolvedObject);
+                // Calculate width of object.
+                let objectWidth = this.getResolvedObjectEndPointFromTimelineStart(resolvedObject);
+                // If the offset is less than 0, subtract from the width and set to 0.
+                if (offsetFromStart < 0) {
+                    objectWidth += offsetFromStart;
+                    offsetFromStart = 0;
+                }
+                // Create a rectangle representing object duration.
+                let resolvedObjectRect = new fabric_1.fabric.Rect({
+                    left: this.timelineStart + offsetFromStart,
+                    width: objectWidth,
+                    height: this.rowHeight * (2 / 3),
+                    top: this.getResolvedObjectTop(resolvedObject),
+                    fill: 'rgba(105, 35, 140, 0.5)',
+                    stroke: 'rgba(53, 17, 71, 0.5)',
+                    strokeWidth: 1,
+                    selectable: false
+                });
+                // Add a label to the rectangle containing the object ID.
+                let resolvedObjectLabel = new fabric_1.fabric.Text(resolvedObject.id, {
+                    fontFamily: 'Calibri',
+                    fontSize: 16,
+                    textAlign: 'center',
+                    fill: 'white',
+                    selectable: false,
+                    top: this.getResolvedObjectTop(resolvedObject),
+                    left: this.timelineStart + offsetFromStart
+                });
+                if (resolvedObjectLabel.width <= resolvedObjectRect.width) {
+                    // Group rectangle and label.
+                    let resolvedObjectGroup = new fabric_1.fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
+                        selectable: false
+                    });
+                    // Draw.
+                    this.canvas.add(resolvedObjectGroup);
+                    this.canvas.bringToFront(resolvedObjectGroup);
+                    this.timeLineObjects['timeEvents'].push(resolvedObjectGroup);
+                }
+                else {
+                    // Draw.
+                    this.canvas.add(resolvedObjectRect);
+                    this.canvas.bringToFront(resolvedObjectRect);
+                    this.timeLineObjects['timeEvents'].push(resolvedObjectRect);
+                }
+            }
         });
+    }
+    drawLogicalObjects(timeline, LogicalObjectDrawTimes) {
+        for (let name in LogicalObjectDrawTimes) {
+            LogicalObjectDrawTimes[name].forEach(drawTime => {
+                let timelineObj = this.getLogicalTimelineObjectByName(timeline, name);
+                if (this.showOnTimeline(drawTime.start, drawTime.end)) {
+                    let offsetFromStart = this.getObjectOffsetFromTimelineStart(drawTime.start);
+                    let objectWidth = this.getObjectEndPointFromTimelineStart(drawTime.start, drawTime.end);
+                    let top = this.getUnresolvedObjectTop(timelineObj);
+                    if (offsetFromStart < 0) {
+                        objectWidth += offsetFromStart;
+                        offsetFromStart = 0;
+                    }
+                    // Create a rectangle representing object duration.
+                    let resolvedObjectRect = new fabric_1.fabric.Rect({
+                        left: this.timelineStart + offsetFromStart,
+                        width: objectWidth,
+                        height: this.rowHeight * (2 / 3),
+                        top: top,
+                        fill: 'rgba(255, 255, 102, 0.5)',
+                        stroke: 'rgba(255, 255, 0, 0.5)',
+                        strokeWidth: 1,
+                        selectable: false
+                    });
+                    // Add a label to the rectangle containing the object ID.
+                    let resolvedObjectLabel = new fabric_1.fabric.Text(name, {
+                        fontFamily: 'Calibri',
+                        fontSize: 16,
+                        textAlign: 'center',
+                        fill: 'white',
+                        selectable: false,
+                        top: top,
+                        left: this.timelineStart + offsetFromStart
+                    });
+                    if (resolvedObjectLabel.width <= resolvedObjectRect.width) {
+                        // Group rectangle and label.
+                        let resolvedObjectGroup = new fabric_1.fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
+                            selectable: false
+                        });
+                        // Draw.
+                        this.canvas.add(resolvedObjectGroup);
+                        this.canvas.bringToFront(resolvedObjectGroup);
+                        this.timeLineObjects['logicalEvents'].push(resolvedObjectGroup);
+                    }
+                    else {
+                        // Draw.
+                        this.canvas.add(resolvedObjectRect);
+                        this.canvas.bringToFront(resolvedObjectRect);
+                        this.timeLineObjects['logicalEvents'].push(resolvedObjectRect);
+                    }
+                }
+            });
+        }
+    }
+    getLogicalTimelineObjectByName(timeline, name) {
+        for (let _i = 0; _i < timeline.unresolved.length; _i++) {
+            if (timeline.unresolved[_i].id === name) {
+                return timeline.unresolved[_i];
+            }
+        }
+        return { id: 'undefined', trigger: { type: -1, value: -1 }, LLayer: -1, content: [] };
     }
     /**
      * Finds the object with the earliest start time in a timeline and returns the time.
@@ -325,7 +664,53 @@ class TimelineVisualizer {
      * @returns Offset in pixels.
      */
     getResolvedObjectOffsetFromTimelineStart(resolvedObject) {
-        return (resolvedObject.resolved.startTime - this.drawTimeStart) * this.pixelsWidthPerUnitTime;
+        // Calculate offset.
+        let offset = (resolvedObject.resolved.startTime - this.drawTimeStart) * this.pixelsWidthPerUnitTime;
+        // Offset cannot be to the left of the timeline start position.
+        if (offset < 0) {
+            offset = 0;
+        }
+        return offset;
+    }
+    getObjectOffsetFromTimelineStart(start) {
+        // Calculate offset.
+        let offset = (start - this.drawTimeStart) * this.pixelsWidthPerUnitTime;
+        // Offset cannot be to the left of the timeline start position.
+        if (offset < 0) {
+            offset = 0;
+        }
+        return offset;
+    }
+    /**
+     * Gets the end postion of a timeline object, relative to the start of the timeline.
+     * @param {TimelineResolvedObject} resolvedObject Object to calculate end position for.
+     * @returns End position, in pixels, relative to timeline start.
+     */
+    getResolvedObjectEndPointFromTimelineStart(resolvedObject) {
+        // Get object start and end times.
+        let endTime = resolvedObject.resolved.endTime;
+        let startTime = resolvedObject.resolved.startTime;
+        // If the start time is less than the timeline start, set to timeline start.
+        if (startTime < this.drawTimeStart) {
+            startTime = this.drawTimeStart;
+        }
+        // Calculate duration of the object remaining on the timeline.
+        let duration = endTime - startTime;
+        // Return end point position in pixels.
+        return duration * this.pixelsWidthPerUnitTime;
+    }
+    getObjectEndPointFromTimelineStart(start, end) {
+        // Get object start and end times.
+        let endTime = end;
+        let startTime = start;
+        // If the start time is less than the timeline start, set to timeline start.
+        if (startTime < this.drawTimeStart) {
+            startTime = this.drawTimeStart;
+        }
+        // Calculate duration of the object remaining on the timeline.
+        let duration = endTime - startTime;
+        // Return end point position in pixels.
+        return duration * this.pixelsWidthPerUnitTime;
     }
     /**
      * Calculate the width, in pixels, of an object from its duration.
@@ -334,6 +719,27 @@ class TimelineVisualizer {
      */
     getResolvedObjectWidth(resolvedObject) {
         return resolvedObject.resolved.outerDuration * this.pixelsWidthPerUnitTime;
+    }
+    /**
+     * Determines whether to show an object on the timeline.
+     * @param {TimelineResolvedObject} resolvedObject The object to check.
+     * @returns {true} if resolvedObject should be shown on the timeline.
+     */
+    showObjectOnTimeline(resolvedObject) {
+        let withinTimeline = resolvedObject.resolved.startTime >= this.drawTimeStart || resolvedObject.resolved.endTime <= this.drawTimeEnd;
+        let duringTimeline = this.drawTimeStart > resolvedObject.resolved.startTime && this.drawTimeEnd < resolvedObject.resolved.endTime;
+        let beforeTimeline = resolvedObject.resolved.endTime < this.drawTimeStart;
+        let afterTimeline = resolvedObject.resolved.startTime > this.drawTimeEnd;
+        // return withinTimeline && !beforeTimeline && !afterTimeline
+        return (withinTimeline || duringTimeline) && !beforeTimeline && !afterTimeline;
+    }
+    showOnTimeline(start, end) {
+        let withinTimeline = start >= this.drawTimeStart || end <= this.drawTimeEnd;
+        let duringTimeline = this.drawTimeStart > start && this.drawTimeEnd < end;
+        let beforeTimeline = end < this.drawTimeStart;
+        let afterTimeline = start > this.drawTimeEnd;
+        // return withinTimeline && !beforeTimeline && !afterTimeline
+        return (withinTimeline || duringTimeline) && !beforeTimeline && !afterTimeline;
     }
     /**
      * Calculate position of object from top of timeline according to its layer and type.
@@ -347,6 +753,209 @@ class TimelineVisualizer {
             top += this.rowHeight / 3;
         }
         return top;
+    }
+    getUnresolvedObjectTop(object) {
+        let top = this.layers.indexOf(object.LLayer.toString()) * this.rowHeight;
+        // Time-based events are placed at the bottom of a row.
+        if (object.trigger.type !== superfly_timeline_1.TriggerType.LOGICAL) {
+            top += this.rowHeight / 3;
+        }
+        return top;
+    }
+    /**
+     * Handles mouse down event.
+     * @param opt Mouse event.
+     */
+    canvasMouseDown(opt) {
+        // Extract event.
+        let event = opt.e;
+        // Store mouse is down.
+        this.mouseDown = true;
+        // Store X position of mouse on click.
+        this.mouseLastClickX = event.clientX;
+        // Prevent event.
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    /**
+     * Handles mouse up event.
+     * @param opt Mouse event.
+     */
+    canvasMouseUp(opt) {
+        // Mouse no longer down.
+        this.mouseDown = false;
+        // Reset scroll direction.
+        this.lastScrollDirection = 0;
+        // Prevent event.
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
+    }
+    /**
+     * Handles mouse movement on canvas.
+     * @param opt Mouse event.
+     */
+    canvasMouseMove(opt) {
+        // If mouse is down.
+        if (this.mouseDown) {
+            // Extract event.
+            let event = opt.e;
+            // If we are beginning scrolling, we can move freely.
+            if (this.lastScrollDirection === undefined || this.lastScrollDirection === 0) {
+                // Store current mouse X.
+                this.mouseLastX = event.clientX;
+                // Calculate change in X.
+                let deltaX = event.clientX - this.mouseLastClickX;
+                // Store scrolling direction.
+                if (deltaX < 0) {
+                    this.lastScrollDirection = -1;
+                }
+                else {
+                    this.lastScrollDirection = 1;
+                }
+                // Scroll to new X position.
+                this.canvasScrollByDeltaX(deltaX);
+            }
+            else {
+                // Calculate scroll direction.
+                let direction = this.mouseLastX - event.clientX;
+                // If changing direction, store new direction but don't scroll.
+                if (direction < 0 && this.lastScrollDirection === 1) {
+                    this.mouseLastClickX = event.clientX;
+                    this.lastScrollDirection = -1;
+                }
+                else if (direction > 0 && this.lastScrollDirection === -1) {
+                    this.mouseLastClickX = event.clientX;
+                    this.lastScrollDirection = 1;
+                }
+                else {
+                    // Calculate change in X.
+                    let deltaX = event.clientX - this.mouseLastClickX;
+                    // Store last X position.
+                    this.mouseLastX = event.clientX;
+                    // Move by change in X.
+                    this.canvasScrollByDeltaX(deltaX);
+                }
+            }
+        }
+    }
+    /**
+     * Handles scroll wheel events on the canvas.
+     * @param opt Scroll event.
+     */
+    canvasScrollWheel(opt) {
+        // Extract event.
+        let event = opt.e;
+        // Get mouse pointer coordinates on canvas.
+        let canvasCoord = this.canvas.getPointer(event.e);
+        // Don't scroll if mouse is not over timeline.
+        if (canvasCoord.x <= this.timelineStart) {
+            return;
+        }
+        // CTRL + scroll to zoom.
+        if (event.ctrlKey === true) {
+            // If scrolling "up".
+            if (event.deltaY > 0) {
+                // Zoom in.
+                this.timelineZoom = Math.max(this.timelineZoom - 10, 50);
+                // Zoom relative to cursor position.
+                this.zoomUnderCursor(canvasCoord.x);
+                this.redrawTimeline(this.lastTimelineDrawn);
+            }
+            else if (event.deltaY < 0) {
+                // Zoom out.
+                this.timelineZoom = Math.min(this.timelineZoom + 10, 1000);
+                // Zoom relative to cursor position.
+                this.zoomUnderCursor(canvasCoord.x);
+                this.redrawTimeline(this.lastTimelineDrawn);
+            }
+        }
+        else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
+            // Pan.
+            this.canvasScrollByDeltaX(event.deltaX * 10);
+        }
+        // Prevent event.
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    /**
+     * Scroll across the canvas by a specified X value.
+     * @param {number} deltaX Value to move by.
+     */
+    canvasScrollByDeltaX(deltaX) {
+        // Calculate new starting time.
+        let targetStart = this.drawTimeStart + deltaX;
+        // Starting time cannot be < 0.
+        if (targetStart < 0) {
+            targetStart = 0;
+        }
+        // Optimisation, don't redraw if nothing has changed.
+        if (targetStart === this.drawTimeStart) {
+            return;
+        }
+        // Calculate end point.
+        let targetEnd = targetStart + this.scaledDrawTimeRange;
+        // Update timeline start and end values.
+        this.drawTimeStart = targetStart;
+        this.drawTimeEnd = targetEnd;
+        // Redraw timeline.
+        this.redrawTimeline(this.lastTimelineDrawn);
+    }
+    /**
+     * Calculates the new scaled timeline start and end times according to the current zoom value.
+     */
+    updateScaledDrawTimeRange() {
+        this.scaledDrawTimeRange = this.drawTimeRange * (this.timelineZoom / 100);
+    }
+    /**
+     * Zooms into/out of timeline, keeping the time under the cursor in the same position.
+     * @param cursorX Position of mouse cursor.
+     */
+    zoomUnderCursor(cursorX) {
+        // Get time under cursor.
+        let coordToTime = this.cursorPosToTime(cursorX);
+        // Calculate position of mouse relative to edges of timeline.
+        let ratio = this.getCursorPositionAcrossTimeline(cursorX);
+        // Set zoom values.
+        this.updateScaledDrawTimeRange();
+        // Calculate start and end values.
+        let targetStart = coordToTime - (ratio * this.scaledDrawTimeRange);
+        let targetEnd = targetStart + this.scaledDrawTimeRange;
+        // Start cannot be less than 0 but we must preserve the time range to draw.
+        if (targetStart < 0) {
+            let diff = -targetStart;
+            targetStart = 0;
+            targetEnd += diff;
+        }
+        // Set draw times.
+        this.drawTimeStart = targetStart;
+        this.drawTimeEnd = targetEnd;
+    }
+    /**
+     * Gets the current time under the mouse cursor.
+     * @param cursorX Mouse cursor position (x-axis).
+     * @returns Time under cursor, or -1 if the cursor is not over the timeline.
+     */
+    cursorPosToTime(cursorX) {
+        // Check if over timeline.
+        if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+            return -1;
+        }
+        let ratio = this.getCursorPositionAcrossTimeline(cursorX);
+        return this.drawTimeStart + (this.scaledDrawTimeRange * ratio);
+    }
+    /**
+     * Gets the position of the mouse cursor as a percentage of the width of the timeline.
+     * @param cursorX Mouse cursor position.
+     * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
+     */
+    getCursorPositionAcrossTimeline(cursorX) {
+        // Check if over timeline.
+        if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+            return -1;
+        }
+        let diffX = cursorX - this.timelineStart;
+        let ratio = diffX / this.timelineWidth;
+        return ratio;
     }
 }
 exports.TimelineVisualizer = TimelineVisualizer;
