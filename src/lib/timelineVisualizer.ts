@@ -7,6 +7,10 @@ class LogicalObjectDrawTime {
 	end: number
 }
 
+class LogicalObjectDrawTimes {
+	[id: string]: Array<LogicalObjectDrawTime>
+}
+
 class TimelineDictionary {
 	[id: string]: TimelineResolvedObject
 }
@@ -51,32 +55,17 @@ export class TimelineVisualizer {
 	private rowHeight: number
 
 	// Store the last timeline drawn, for redrawing and comparisons.
-	// private lastTimelineDrawn: ResolvedTimeline
 	private lastTimelineDictionary: TimelineDictionary
 	private lastLogicalDictionary: LogicalObjectDictionary
-	private logicalObjectsDrawn: {[objName: string]: Array<LogicalObjectDrawTime>}
-
-	// List of all objects displayed on the timeline.
-	/*private timeLineObjects: {
-		background: fabric.Object | undefined
-		layerLabels: Array<fabric.Group>
-		timeEvents: {[name: string]: fabric.Rect}
-		timeEventsLabels: {[name: string]: fabric.Text}
-		logicalEvents: {[name: string]: fabric.Rect}
-		logicalEventsLabels: {[name: string]: fabric.Text}
-	} = {
-		background: undefined,
-		layerLabels: [],
-		timeEvents: {},
-		timeEventsLabels: {},
-		logicalEvents: {},
-		logicalEventsLabels: {}
-	}*/
+	private logicalObjectsDrawn: LogicalObjectDrawTimes
 
 	// Width of the actual timeline within the canvas, in pixels.
 	private timelineWidth: number
 	// Start and end of the timeline relative to the left of the canvas, in pixels.
 	private timelineStart: number
+
+	// Height of objects to draw.
+	private timelineObjectHeight: number
 
 	// Start and end time of the current view. Defines the objects within view on the timeline.
 	private drawTimeStart: number
@@ -107,16 +96,12 @@ export class TimelineVisualizer {
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
 	constructor (canvasId: string) {
-		// Initialise map of canvas objects.
-		/*this.timeLineObjects.background = undefined
-		this.timeLineObjects.layerLabels = []
-		this.timeLineObjects.timeEvents = {}
-		this.timeLineObjects.logicalEvents = {}*/
-
 		// Initialise other values.
 		this.mouseDown = false
 		this.timelineZoom = 100
-		// this.lastTimelineDictionary = {}
+		this.lastTimelineDictionary = {}
+		this.lastLogicalDictionary = {}
+		this.logicalObjectsDrawn = {}
 
 		this.canvasId = canvasId
 
@@ -139,7 +124,6 @@ export class TimelineVisualizer {
 			selectable: false
 		})
 		this.canvas.add(background)
-		// this.timeLineObjects.background = background
 	}
 
 	initCanvas () {
@@ -179,22 +163,7 @@ export class TimelineVisualizer {
 
 		// If the timeline contains any objects, draw.
 		if (resolvedTimeline.resolved.length > 0) {
-			/*this.drawInitialTimeline(resolvedTimeline)
-
-			let stateChanges = this.getStateChangesFromTimeline(resolvedTimeline)
-
-			let logicalDrawTimes = this.resolveLogicalObjects(resolvedTimeline, stateChanges)
-
-			this.drawLogicalObjects(resolvedTimeline, logicalDrawTimes)
-
-			// Store last timeline drawn.
-			this.lastTimelineDrawn = resolvedTimeline
-			this.logicalObjectsDrawn = logicalDrawTimes*/
-
 			this.drawInitialTimeline(resolvedTimeline)
-
-			// this.lastTimelineDrawn = resolvedTimeline
-			// this.logicalObjectsDrawn = logicalDrawTimes
 		}
 	}
 
@@ -209,10 +178,7 @@ export class TimelineVisualizer {
 
 		// If the timeline contains any objects, draw.
 		if (resolvedTimeline.resolved.length > 0) {
-			this.redrawTimeline()
-
-			// Store last timeline drawn.
-			// this.lastTimelineDrawn = resolvedTimeline
+			this.drawInitialTimeline(resolvedTimeline)
 		}
 	}
 
@@ -234,6 +200,11 @@ export class TimelineVisualizer {
 		return layers
 	}
 
+	/**
+	 * Gets all the logical objects present on the timeline.
+	 * @param {ResolvedTimeline} timeline Timeline to get logical objects from.
+	 * @returns {LogicalObjectDictionary} Logical objects by name.
+	 */
 	getLogicalObjectsFromTimeline (timeline: ResolvedTimeline): LogicalObjectDictionary {
 		let objects: LogicalObjectDictionary = {}
 
@@ -246,111 +217,95 @@ export class TimelineVisualizer {
 		return objects
 	}
 
+	/**
+	 * Returns times where the timeline state changes.
+	 * @param {ResolvedTimeline} timeline Timeline to find state changes from.
+	 * @returns {Array<number>} Sorted list of state change times.
+	 */
 	getStateChangesFromTimeline (timeline: ResolvedTimeline): Array<number> {
-		let changesOfState: Array<number> = []
+		let changesOfState: {[time: number]: boolean} = {}
 
-		changesOfState.push(0)
+		// Always check state at 0.
+		changesOfState[0] = true
 
 		timeline.resolved.forEach(obj => {
+			// Get start and end times for the object.
 			let startTime = obj.resolved.startTime as number
 			let endTime = obj.resolved.endTime as number
 
-			if (changesOfState.indexOf(startTime) === -1) {
-				changesOfState.push(startTime)
-
-				if (changesOfState.indexOf(startTime - 1) === -1) {
-					changesOfState.push(startTime - 1)
-				}
-
-				if (changesOfState.indexOf(startTime + 1) === -1) {
-					changesOfState.push(startTime + 1)
-				}
-			}
-
-			if (changesOfState.indexOf(endTime) === -1) {
-				changesOfState.push(endTime)
-
-				if (changesOfState.indexOf(endTime - 1) === -1) {
-					changesOfState.push(endTime - 1)
-				}
-
-				if (changesOfState.indexOf(endTime + 1) === -1) {
-					changesOfState.push(endTime + 1)
-				}
-			}
+			changesOfState[startTime] = true
+			changesOfState[endTime] = true
 		})
 
+		// Get max timeline time.
 		let max = this.findMaxEndTime(timeline)
 
-		if (changesOfState.indexOf(max) === -1) {
-			changesOfState.push(max)
+		// Always check max.
+		changesOfState[max] = true
+
+		// Convert dictionary to array.
+		let sorted: Array<number> = []
+		for (let key in changesOfState) {
+			sorted[sorted.length] = Number(key)
 		}
 
-		return changesOfState.sort(function (a, b) {
+		// Return sorted list.
+		return sorted.sort(function (a,b) {
 			return a - b
 		})
 	}
 
-	createTimeBasedFabricObjects (timeline: ResolvedTimeline) {
-		timeline.resolved.forEach(element => {
-			let resolvedObjectRect = new fabric.Rect({
-				left: 0,
-				width: 0,
-				height: 0,
-				top: 0,
-				fill: 'rgba(105, 35, 140, 0.5)',
-				stroke: 'rgba(53, 17, 71, 0.5)',
-				strokeWidth: 1,
-				selectable: false,
-				visible: false,
-				name: element.id as string
-			})
-
-			let resolvedObjectLabel = new fabric.Text(element.id, {
-				fontFamily: 'Calibri',
-				fontSize: 16,
-				textAlign: 'center',
-				fill: 'white',
-				selectable: false,
-				top: 0,
-				left: 0,
-				visible: false,
-				name: element.id as string
-			})
-
-			this.canvas.add(resolvedObjectRect)
-			this.canvas.add(resolvedObjectLabel)
-		})
-	}
-
-	resolveLogicalObjects (timeline: ResolvedTimeline, changesOfState: Array<number>): {[objName: string]: Array<LogicalObjectDrawTime>} {
-		let logicalObjectsActiveTimes: { [objName: string]: Array<LogicalObjectDrawTime> } = { '': [] }
+	/**
+	 * Resolves logical objects and returns the times that each logical object should be drawn.
+	 * @param {ResolvedTimeline} timeline Timeline to draw logical objects from.
+	 * @param {Array<number>} changesOfState List of times that the timeline changes state.
+	 * @returns {LogicalObjectDrawTimes} Times to draw logical objects.
+	 */
+	resolveLogicalObjects (timeline: ResolvedTimeline, changesOfState: Array<number>): LogicalObjectDrawTimes {
+		// Store list of active times for each object.
+		let logicalObjectsActiveTimes: LogicalObjectDrawTimes = { }
+		// Stores the last recorded state for each object.
 		let logicalObjectsLastState: { [objName: string]: boolean } = { '': false }
 
+		// Go through each change of state.
 		changesOfState.forEach(time => {
+			// Get current state of the timeline.
 			let timeLineState: TimelineState = Resolver.getState(timeline, time)
+
+			// Go through all unresolved objects.
 			timeline.unresolved.forEach(obj => {
+				// Get the state of the logical object at this time.
 				let objectState = Resolver.decipherLogicalValue(obj.trigger.value, obj, timeLineState, false) as boolean
 
+				// If the object has not been recorded before, it needs to be added.
 				if (logicalObjectsActiveTimes[obj.id as string] !== undefined) {
+					// If object state has changed.
 					if (objectState !== logicalObjectsLastState[obj.id as string] as boolean) {
+						// If the new state is true.
 						if (objectState === true) {
+							// New start time.
 							let drawTime = new LogicalObjectDrawTime()
 							drawTime.start = time
 							logicalObjectsActiveTimes[obj.id as string].push(drawTime)
 						} else {
+							// New end time.
 							let drawTime = logicalObjectsActiveTimes[obj.id as string].pop() as LogicalObjectDrawTime
 							drawTime.end = time - 1
 							logicalObjectsActiveTimes[obj.id as string].push(drawTime)
 						}
 					}
 
+					// Record last state
 					logicalObjectsLastState[obj.id as string] = objectState
 				} else {
+					// Initialise active times array for object.
 					logicalObjectsActiveTimes[obj.id as string] = []
+					// Initialise last state for object.
 					logicalObjectsLastState[obj.id as string] = objectState
 
+					// If the current state is true.
 					if (objectState === true) {
+						// Add new start time.
 						let drawTime = new LogicalObjectDrawTime()
 						drawTime.start = time
 						logicalObjectsActiveTimes[obj.id].push(drawTime)
@@ -452,24 +407,34 @@ export class TimelineVisualizer {
 		this.drawTimeStart = 0
 		this.drawTimeEnd = this.drawTimeStart + this.scaledDrawTimeRange
 
+		// Set timeline object height.
+		this.timelineObjectHeight = (this.rowHeight / 3) * 2
+
+		// Create a dictionary out of timeline objects for indexing by name.
 		let timelineDictionary: TimelineDictionary = {}
 		timeline.resolved.forEach(object => {
 			timelineDictionary[object.id as string] = object
 		})
+
+		// Create fabric objects for all time-based objects.
 		this.createTimeBasedFabricObjects(timeline)
 
+		// Get logical objects on timeline.
 		let logicalObjects = this.getLogicalObjectsFromTimeline(timeline)
 
+		// Resolve logical objects.
 		let drawTimes = this.resolveLogicalObjects(timeline, this.getStateChangesFromTimeline(timeline))
 
+		// Create fabirc objects for all logic-based objects.
 		this.createLogicBasedFabricObjects(drawTimes)
 
-		this.drawTimeline(timelineDictionary)
-		this.drawLogicalObjects(logicalObjects, drawTimes)
-
+		// Store the objects to draw.
 		this.lastTimelineDictionary = timelineDictionary
 		this.lastLogicalDictionary = logicalObjects
 		this.logicalObjectsDrawn = drawTimes
+
+		// Draw timeline.
+		this.redrawTimeline()
 	}
 
 	/**
@@ -477,60 +442,39 @@ export class TimelineVisualizer {
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 */
 	redrawTimeline () {
-		this.drawTimeline(this.lastTimelineDictionary)
-		this.drawLogicalObjects(this.lastLogicalDictionary, this.logicalObjectsDrawn)
-	}
-
-	/**
-	 * Draws a timeline to the canvas.
-	 * @param {ResolvedTimeline} timeline Timeline to draw.
-	 */
-	drawTimeline (timelineDictionary: TimelineDictionary) {
-		// Don't draw an empty timeline.
-		if (timelineDictionary === {}) {
-			return
-		}
-
 		// Calculate how many pixels are required per unit time.
 		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
 
-		let currentDrawState: TimelineDrawState = {}
-		let height = (this.rowHeight / 3) * 2
+		// Get states for time-based and logical objects.
+		let timeStates = this.getTimelineTimeDrawState(this.lastTimelineDictionary)
+		let logicalStates = this.getTimelineLogicalDrawState(this.lastLogicalDictionary, this.logicalObjectsDrawn)
 
-		for (let id in timelineDictionary) {
-			let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
-			if (this.showObjectOnTimeline(timelineDictionary[id])) {
-				let offset = this.getResolvedObjectOffsetFromTimelineStart(timelineDictionary[id])
-				let width = this.getResolvedObjectWidth(timelineDictionary[id])
+		// Draw the current state.
+		this.drawTimelineState({ ...timeStates, ...logicalStates })
+	}
 
-				if (offset < 0) {
-					width += offset
-					offset = 0
-				}
-
-				state.height = height
-				state.left = this.timelineStart + offset
-				state.top = this.getResolvedObjectTop(timelineDictionary[id])
-				state.width = width
-				state.visible = true
-
-				if (state.left < 0) {
-					state.width += state.left
-				}
-			}
-
-			currentDrawState[id] = state
-		}
-
+	/**
+	 * Draws a timeline state to the canvas.
+	 * @param {TimelineDrawState} currentDrawState State to draw.
+	 */
+	drawTimelineState (currentDrawState: TimelineDrawState) {
+		// Iterate through cavas.
+		// Seemingly the only way to update objects without clearing the canvas.
 		this.canvas.getObjects().forEach(element => {
 			if (element.name !== undefined) {
+				// Only interested in fabric.Rect and fabric.Text
 				if (element.type === 'rect' || element.type === 'text') {
+					// Check element is affected by current state.
+					// Note: This allows for partial updates.
 					if (element.name in currentDrawState) {
 						let state = currentDrawState[element.name]
+
+						// Text objects shouldn't have their dimensions modified.
 						if (element.type === 'text') {
 							element.set({
 								top: state.top,
 								left: state.left,
+								// Only show if text fits within timeline object.
 								visible: ((element.width as number) <= state.width) ? state.visible : false
 							})
 						} else {
@@ -547,136 +491,120 @@ export class TimelineVisualizer {
 			}
 		})
 
+		// Tell canvas to re-render all objects.
 		this.canvas.renderAll()
 	}
 
-	drawLogicalObjects (logicalObjectDictionary: LogicalObjectDictionary, logicalObjectDrawTimes: {[objName: string]: Array<LogicalObjectDrawTime>}) {
-		if (logicalObjectDrawTimes === {} || logicalObjectDictionary === {}) {
-			return
+	/**
+	 * Returns the draw states for all time-based objects.
+	 * @param {TimelineDictionary} timelineDictionary Dictionary of time-based objects.
+	 * @returns {TimelineDrawState} State of time-based objects.
+	 */
+	getTimelineTimeDrawState (timelineDictionary: TimelineDictionary): TimelineDrawState {
+		let currentDrawState: TimelineDrawState = {}
+
+		for (let id in timelineDictionary) {
+
+			currentDrawState[id] = this.createStateForObject(timelineDictionary[id], timelineDictionary[id].resolved.startTime as number, timelineDictionary[id].resolved.endTime as number)
 		}
 
-		let height = 2 * (this.rowHeight / 3)
+		return currentDrawState
+	}
 
+	/**
+	 * Returns the draw states for all logical objects.
+	 * @param {LogicalObjectDictionary} logicalObjectDictionary Dictionary of logical objects.
+	 * @param {LogicalObjectDrawTimes} logicalObjectDrawTimes Times to draw.
+	 * @returns {TimelineDrawState} State of logical objects.
+	 */
+	getTimelineLogicalDrawState (logicalObjectDictionary: LogicalObjectDictionary, logicalObjectDrawTimes: LogicalObjectDrawTimes): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 
 		for (let name in logicalObjectDrawTimes) {
 			for (let _i = 0; _i < logicalObjectDrawTimes[name].length; _i++) {
-				let state = { height: 0, left: 0, top: 0, width: 0, visible: false }
-
-				if (this.showOnTimeline(logicalObjectDrawTimes[name][_i].start, logicalObjectDrawTimes[name][_i].end)) {
-					let start = logicalObjectDrawTimes[name][_i].start
-					let end = logicalObjectDrawTimes[name][_i].end
-					let offset = this.getObjectOffsetFromTimelineStart(start)
-					let width = this.getObjectEndPointFromTimelineStart(start, end)
-					let top = this.getUnresolvedObjectTop(logicalObjectDictionary[name])
-
-					if (offset < 0) {
-						width += offset
-						offset = 0
-					}
-
-					state.height = height
-					state.left = this.timelineStart + this.getObjectOffsetFromTimelineStart(start)
-					state.top = top
-					state.width = width
-					state.visible = true
-
-					currentDrawState[name + _i] = state
-				}
-
-				currentDrawState[name + _i] = state
+				currentDrawState[name + _i] = this.createStateForObject(logicalObjectDictionary[name], logicalObjectDrawTimes[name][_i].start, logicalObjectDrawTimes[name][_i].end)
 			}
 		}
 
-		this.canvas.getObjects().forEach(element => {
-			if (element.name !== undefined) {
-				if (element.type === 'text' || element.type === 'rect') {
-					if (element.name in currentDrawState) {
-						let state = currentDrawState[element.name]
-						if (element.type === 'text') {
-							element.set({
-								top: state.top,
-								left: state.left,
-								visible: ((element.width as number) <= state.width) ? state.visible : false
-							})
-						} else {
-							element.set({
-								height: state.height,
-								left: state.left,
-								top: state.top,
-								width: state.width,
-								visible: state.visible
-							})
-						}
-					}
-				}
+		return currentDrawState
+	}
+
+	/**
+	 * Creates a draw sstate for a timeline object.
+	 * @param {TimelineObject} object Object to draw.
+	 * @param {number} start Start time.
+	 * @param {number} end End time.
+	 * @returns {DrawState} State of the object to draw.
+	 */
+	createStateForObject (object: TimelineObject, start: number, end: number): DrawState {
+		// Default state (hidden).
+		let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
+
+		// State should be default if the object is not being shown.
+		if (this.showOnTimeline(start, end)) {
+			// Get object dimensions and position.
+			let objectOffset = this.getObjectOffsetFromTimelineStart(start)
+			let objectWidth = this.getObjectWidth(start, end)
+			let objectTop = this.getObjectOffsetFromTop(object)
+
+			// If offset is before timeline, reduce width and set offset to 0.
+			if (objectOffset < 0) {
+				objectWidth += objectOffset
+				objectOffset = 0
 			}
-		})
 
-		this.canvas.renderAll()
-		/*for (let name in LogicalObjectDrawTimes) {
-			LogicalObjectDrawTimes[name].forEach(drawTime => {
-				let timelineObj = this.getLogicalTimelineObjectByName(timeline, name)
-				if (this.showOnTimeline(drawTime.start, drawTime.end)) {
-					let offsetFromStart = this.getObjectOffsetFromTimelineStart(drawTime.start)
+			// Set state properties.
+			state.height = this.timelineObjectHeight
+			state.left = this.timelineStart + this.getObjectOffsetFromTimelineStart(start)
+			state.top = objectTop
+			state.width = objectWidth
+			state.visible = true
+		}
 
-					let objectWidth = this.getObjectEndPointFromTimelineStart(drawTime.start, drawTime.end)
+		return state
+	}
 
-					let top = this.getUnresolvedObjectTop(timelineObj)
-
-					if (offsetFromStart < 0) {
-						objectWidth += offsetFromStart
-						offsetFromStart = 0
-					}
-
-					// Create a rectangle representing object duration.
-					let resolvedObjectRect = new fabric.Rect({
-						left: this.timelineStart + offsetFromStart,
-						width: objectWidth,
-						height: this.rowHeight * (2 / 3),
-						top: top,
-						fill: 'rgba(255, 255, 102, 0.5)',
-						stroke: 'rgba(255, 255, 0, 0.5)',
-						strokeWidth: 1,
-						selectable: false
-					})
-
-					// Add a label to the rectangle containing the object ID.
-					let resolvedObjectLabel = new fabric.Text(name, {
-						fontFamily: 'Calibri',
-						fontSize: 16,
-						textAlign: 'center',
-						fill: 'white',
-						selectable: false,
-						top: top,
-						left: this.timelineStart + offsetFromStart
-					})
-
-					// Group rectangle and label.
-					let resolvedObjectGroup = new fabric.Group([resolvedObjectRect, resolvedObjectLabel], {
-						selectable: false
-					})
-
-					// Draw.
-					this.canvas.add(resolvedObjectGroup)
-					this.canvas.bringToFront(resolvedObjectGroup)
-					// this.timeLineObjects.logicalEvents[resolvedObjectLabel.text as string].push(resolvedObjectGroup)
-				}
+	/**
+	 * Creates all the fabric objects for time-based objects.
+	 * @param {ResolvedTimeline} timeline Objects to draw.
+	 */
+	createTimeBasedFabricObjects (timeline: ResolvedTimeline) {
+		timeline.resolved.forEach(element => {
+			let resolvedObjectRect = new fabric.Rect({
+				left: 0,
+				width: 0,
+				height: 0,
+				top: 0,
+				fill: 'rgba(105, 35, 140, 0.5)',
+				stroke: 'rgba(53, 17, 71, 0.5)',
+				strokeWidth: 1,
+				selectable: false,
+				visible: false,
+				name: element.id as string
 			})
-		}*/
+
+			let resolvedObjectLabel = new fabric.Text(element.id, {
+				fontFamily: 'Calibri',
+				fontSize: 16,
+				textAlign: 'center',
+				fill: 'white',
+				selectable: false,
+				top: 0,
+				left: 0,
+				visible: false,
+				name: element.id as string
+			})
+
+			this.canvas.add(resolvedObjectRect)
+			this.canvas.add(resolvedObjectLabel)
+		})
 	}
 
-	getLogicalTimelineObjectByName (timeline: ResolvedTimeline, name: string): TimelineObject {
-		for (let _i = 0; _i < timeline.unresolved.length; _i++) {
-			if ((timeline.unresolved[_i].id as string) === name) {
-				return timeline.unresolved[_i]
-			}
-		}
-
-		return { id: 'undefined', trigger: { type: -1, value: -1 }, LLayer: -1, content: [] }
-	}
-
-	createLogicBasedFabricObjects (logicalObjectDrawTimes: {[objName: string]: Array<LogicalObjectDrawTime>}) {
+	/**
+	 * Creates all the fabric objects for logical objects.
+	 * @param {LogicalObjectDrawTimes} logicalObjectDrawTimes Times to draw.
+	 */
+	createLogicBasedFabricObjects (logicalObjectDrawTimes: LogicalObjectDrawTimes) {
 		for (let name in logicalObjectDrawTimes) {
 			for (let _i = 0; _i < logicalObjectDrawTimes[name].length; _i++) {
 				// Create a rectangle representing object duration.
@@ -765,22 +693,10 @@ export class TimelineVisualizer {
 	}
 
 	/**
-	 * Calculated the offset, in pixels from the start of the timeline for an object.
-	 * @param {TimelineResolvedObject} resolvedObject Object to calculate offset for.
-	 * @returns Offset in pixels.
+	 * Calculates the offset, in pixels from the start of the timeline for an object.
+	 * @param {number} start start time of the object.
+	 * @returns {number} Offset in pixels.
 	 */
-	getResolvedObjectOffsetFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
-		// Calculate offset.
-		let offset = ((resolvedObject.resolved.startTime as number) - this.drawTimeStart) * this.pixelsWidthPerUnitTime
-
-		// Offset cannot be to the left of the timeline start position.
-		/*if (offset < 0) {
-			offset = 0
-		}*/
-
-		return offset
-	}
-
 	getObjectOffsetFromTimelineStart (start: number): number {
 		// Calculate offset.
 		let offset = (start - this.drawTimeStart) * this.pixelsWidthPerUnitTime
@@ -794,28 +710,12 @@ export class TimelineVisualizer {
 	}
 
 	/**
-	 * Gets the end postion of a timeline object, relative to the start of the timeline.
-	 * @param {TimelineResolvedObject} resolvedObject Object to calculate end position for.
-	 * @returns End position, in pixels, relative to timeline start.
+	 * Calculates the width, in pixels, of an object based on its duration.
+	 * @param {number} start Start time of the object.
+	 * @param {number} end End time of the object.
+	 * @returns {number} Width in pixels.
 	 */
-	getResolvedObjectEndPointFromTimelineStart (resolvedObject: TimelineResolvedObject): number {
-		// Get object start and end times.
-		let endTime = resolvedObject.resolved.endTime as number
-		let startTime = resolvedObject.resolved.startTime as number
-
-		// If the start time is less than the timeline start, set to timeline start.
-		if (startTime < this.drawTimeStart) {
-			startTime = this.drawTimeStart
-		}
-
-		// Calculate duration of the object remaining on the timeline.
-		let duration = endTime - startTime
-
-		// Return end point position in pixels.
-		return duration * this.pixelsWidthPerUnitTime
-	}
-
-	getObjectEndPointFromTimelineStart (start: number, end: number): number {
+	getObjectWidth (start: number, end: number): number {
 		// Get object start and end times.
 		let endTime = end
 		let startTime = start
@@ -833,29 +733,20 @@ export class TimelineVisualizer {
 	}
 
 	/**
-	 * Calculate the width, in pixels, of an object from its duration.
-	 * @param {TimelineResolvedObject} resolvedObject Object to calculate width for.
-	 * @returns Width in pixels.
-	 */
-	getResolvedObjectWidth (resolvedObject: TimelineResolvedObject): number {
-		return (resolvedObject.resolved.outerDuration as number) * this.pixelsWidthPerUnitTime
-	}
-
-	/**
 	 * Determines whether to show an object on the timeline.
 	 * @param {TimelineResolvedObject} resolvedObject The object to check.
 	 * @returns {true} if resolvedObject should be shown on the timeline.
 	 */
 	showObjectOnTimeline (resolvedObject: TimelineResolvedObject): boolean {
-		let withinTimeline = (resolvedObject.resolved.startTime as number) >= this.drawTimeStart || (resolvedObject.resolved.endTime as number) <= this.drawTimeEnd
-		let duringTimeline = this.drawTimeStart > (resolvedObject.resolved.startTime as number) && this.drawTimeEnd < (resolvedObject.resolved.endTime as number)
-		let beforeTimeline = (resolvedObject.resolved.endTime as number) < this.drawTimeStart
-		let afterTimeline = (resolvedObject.resolved.startTime as number) > this.drawTimeEnd
-
-		// return withinTimeline && !beforeTimeline && !afterTimeline
-		return (withinTimeline || duringTimeline) && !beforeTimeline && !afterTimeline
+		return this.showOnTimeline(resolvedObject.resolved.startTime as number, resolvedObject.resolved.endTime as number)
 	}
 
+	/**
+	 * Determines whether to show an object on the timeline.
+	 * @param {number} start Object start time.
+	 * @param {number} end Object end time.
+	 * @returns {true} if object should be shown on the timeline.
+	 */
 	showOnTimeline (start: number, end: number) {
 		let withinTimeline = start >= this.drawTimeStart || end <= this.drawTimeEnd
 		let duringTimeline = this.drawTimeStart > start && this.drawTimeEnd < end
@@ -868,21 +759,10 @@ export class TimelineVisualizer {
 
 	/**
 	 * Calculate position of object from top of timeline according to its layer and type.
-	 * @param {TimelineResolvedObject} resolvedObject Object to calculate position for.
+	 * @param {TimelineObject} object Object to calculate position for.
 	 * @returns Position relative to top of canvas in pixels.
 	 */
-	getResolvedObjectTop (resolvedObject: TimelineResolvedObject): number {
-		let top = this.layers.indexOf(resolvedObject.LLayer.toString()) * this.rowHeight
-
-		// Time-based events are placed at the bottom of a row.
-		if (resolvedObject.trigger.type !== TriggerType.LOGICAL) {
-			top += this.rowHeight / 3
-		}
-
-		return top
-	}
-
-	getUnresolvedObjectTop (object: TimelineObject): number {
+	getObjectOffsetFromTop (object: TimelineObject): number {
 		let top = this.layers.indexOf(object.LLayer.toString()) * this.rowHeight
 
 		// Time-based events are placed at the bottom of a row.
