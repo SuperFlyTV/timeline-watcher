@@ -117,6 +117,7 @@ export class TimelineVisualizer {
 	private _lastTimelineDictionary: TimelineDictionary
 	private _lastLogicalDictionary: LogicalObjectDictionary
 	private _logicalObjectsDrawn: LogicalObjectDrawTimes
+	private _lastMaxTime: number
 
 	// Width of the actual timeline within the canvas, in pixels.
 	private _timelineWidth: number
@@ -238,6 +239,72 @@ export class TimelineVisualizer {
 		// If the timeline contains any objects, draw.
 		if (resolvedTimeline.resolved.length > 0) {
 			this.drawInitialTimeline(resolvedTimeline)
+
+			// Create a dictionary out of timeline objects for indexing by name.
+			let timelineDictionary: TimelineDictionary = {}
+			resolvedTimeline.resolved.forEach(object => {
+				// Create fabric objects for new timeline objects.
+				if (!(object.id in this._lastTimelineDictionary)) {
+					this.createTimeBasedFabricObject(object)
+				}
+
+				timelineDictionary[object.id as string] = object
+			})
+
+			// Get max time for new timeline.
+			let max = this.findMaxEndTime(resolvedTimeline)
+
+			// Get logical objects on timeline.
+			let logicalObjects = this.getLogicalObjectsFromTimeline(resolvedTimeline)
+
+			// If the new max time has changed or the number of logical objects has changed.
+			if (max > this._lastMaxTime || (Object.keys(logicalObjects).length > Object.keys(this._lastLogicalDictionary).length)) {
+				// Resolve logical objects.
+				let drawTimes = this.resolveLogicalObjects(resolvedTimeline, this.getStateChangesFromTimeline(resolvedTimeline))
+
+				// Iterate through all draw times to find new draw times.
+				for (let key in drawTimes) {
+					// If the object is entirely new.
+					if (!(key in this._logicalObjectsDrawn)) {
+						for (let _i = 0; _i < drawTimes[key].length; _i++) {
+							// Create a fabric object.
+							this.createLogicBasedFabricObject(name, _i)
+						}
+					} else {
+						// If the number of times the object is drawn has grown.
+						if (drawTimes[key].length > this._logicalObjectsDrawn[key].length) {
+							// Iterate through all draw times, find new draw times.
+							for (let _i = 0; _i < drawTimes[key].length; _i++) {
+								let found = false
+
+								for (let _j = 0; _j < this._logicalObjectsDrawn[key].length; _j++) {
+									if (drawTimes[key][_i].start === this._logicalObjectsDrawn[key][_j].start) {
+										if (drawTimes[key][_i].end === this._logicalObjectsDrawn[key][_j].end) {
+											found = true
+										}
+									}
+								}
+
+								// Create a new fabric object.
+								if (!found) {
+									this.createLogicBasedFabricObject(key, _i)
+								}
+							}
+						}
+					}
+				}
+
+				// Store drawn objects.
+				this._lastLogicalDictionary = logicalObjects
+				this._logicalObjectsDrawn = drawTimes
+				this._lastMaxTime = max
+			}
+
+			// Store the objects to draw.
+			this._lastTimelineDictionary = timelineDictionary
+
+			// Draw timeline.
+			this.redrawTimeline()
 		}
 	}
 
@@ -528,6 +595,7 @@ export class TimelineVisualizer {
 		this._lastTimelineDictionary = timelineDictionary
 		this._lastLogicalDictionary = logicalObjects
 		this._logicalObjectsDrawn = drawTimes
+		this._lastMaxTime = this.findMaxEndTime(timeline)
 
 		// Draw timeline.
 		this.redrawTimeline()
@@ -660,40 +728,76 @@ export class TimelineVisualizer {
 		return state
 	}
 
+	createTimeBasedFabricObject (object: TimelineResolvedObject) {
+		let resolvedObjectRect = new fabric.Rect({
+			left: 0,
+			width: 0,
+			height: 0,
+			top: 0,
+			fill: COLOR_TIME_OBJECT_FILL,
+			stroke: COLOR_TIME_OBJECT_BORDER,
+			strokeWidth: THICKNESS_TIME_OBJECT_BORDER,
+			selectable: false,
+			visible: false,
+			name: object.id as string
+		})
+
+		let resolvedObjectLabel = new fabric.Text(object.id, {
+			fontFamily: TEXT_FONT_FAMILY,
+			fontSize: TEXT_FONT_SIZE,
+			textAlign: 'center',
+			fill: TEXT_COLOR,
+			selectable: false,
+			top: 0,
+			left: 0,
+			visible: false,
+			name: object.id as string
+		})
+
+		this._canvas.add(resolvedObjectRect)
+		this._canvas.add(resolvedObjectLabel)
+	}
+
 	/**
 	 * Creates all the fabric objects for time-based objects.
 	 * @param {ResolvedTimeline} timeline Objects to draw.
 	 */
 	createTimeBasedFabricObjects (timeline: ResolvedTimeline) {
 		timeline.resolved.forEach(element => {
-			let resolvedObjectRect = new fabric.Rect({
-				left: 0,
-				width: 0,
-				height: 0,
-				top: 0,
-				fill: COLOR_TIME_OBJECT_FILL,
-				stroke: COLOR_TIME_OBJECT_BORDER,
-				strokeWidth: THICKNESS_TIME_OBJECT_BORDER,
-				selectable: false,
-				visible: false,
-				name: element.id as string
-			})
-
-			let resolvedObjectLabel = new fabric.Text(element.id, {
-				fontFamily: TEXT_FONT_FAMILY,
-				fontSize: TEXT_FONT_SIZE,
-				textAlign: 'center',
-				fill: TEXT_COLOR,
-				selectable: false,
-				top: 0,
-				left: 0,
-				visible: false,
-				name: element.id as string
-			})
-
-			this._canvas.add(resolvedObjectRect)
-			this._canvas.add(resolvedObjectLabel)
+			this.createTimeBasedFabricObject(element)
 		})
+	}
+
+	createLogicBasedFabricObject (name: string, index: number) {
+		// Create a rectangle representing object duration.
+		let resolvedObjectRect = new fabric.Rect({
+			left: 0,
+			width: 0,
+			height: 0,
+			top: 0,
+			fill: COLOR_LOGIC_OBJECT_FILL,
+			stroke: COLOR_LOGIC_OBJECT_BORDER,
+			strokeWidth: THICKNESS_LOGIC_OBJECT_BORDER,
+			selectable: false,
+			visible: false,
+			name: name + index
+		})
+
+		// Add a label to the rectangle containing the object ID.
+		let resolvedObjectLabel = new fabric.Text(name, {
+			fontFamily: TEXT_FONT_FAMILY,
+			fontSize: TEXT_FONT_SIZE,
+			textAlign: 'center',
+			fill: TEXT_COLOR,
+			selectable: false,
+			top: 0,
+			left: 0,
+			visible: false,
+			name: name + index
+		})
+
+		this._canvas.add(resolvedObjectRect)
+		this._canvas.add(resolvedObjectLabel)
 	}
 
 	/**
@@ -703,35 +807,7 @@ export class TimelineVisualizer {
 	createLogicBasedFabricObjects (logicalObjectDrawTimes: LogicalObjectDrawTimes) {
 		for (let name in logicalObjectDrawTimes) {
 			for (let _i = 0; _i < logicalObjectDrawTimes[name].length; _i++) {
-				// Create a rectangle representing object duration.
-				let resolvedObjectRect = new fabric.Rect({
-					left: 0,
-					width: 0,
-					height: 0,
-					top: 0,
-					fill: COLOR_LOGIC_OBJECT_FILL,
-					stroke: COLOR_LOGIC_OBJECT_BORDER,
-					strokeWidth: THICKNESS_LOGIC_OBJECT_BORDER,
-					selectable: false,
-					visible: false,
-					name: name + _i
-				})
-
-				// Add a label to the rectangle containing the object ID.
-				let resolvedObjectLabel = new fabric.Text(name, {
-					fontFamily: TEXT_FONT_FAMILY,
-					fontSize: TEXT_FONT_SIZE,
-					textAlign: 'center',
-					fill: TEXT_COLOR,
-					selectable: false,
-					top: 0,
-					left: 0,
-					visible: false,
-					name: name + _i
-				})
-
-				this._canvas.add(resolvedObjectRect)
-				this._canvas.add(resolvedObjectLabel)
+				this.createLogicBasedFabricObject(name, _i)
 			}
 		}
 	}
