@@ -2,6 +2,56 @@ import { fabric } from 'fabric'
 
 import { Resolver, ResolvedTimeline, TimelineResolvedObject, TriggerType, UnresolvedTimeline, TimelineObject, TimelineState } from 'superfly-timeline'
 
+/** Step size/ time step. */
+const DEFAULT_STEP_SIZE = 1
+/** Draw range (will be multiplied by DEFAULT_STEP_SIZE). */
+const DEFAULT_DRAW_RANGE = 5000
+/** Width of label column. */
+const LABEL_WIDTH_OF_TIMELINE = 0.25
+/** Default zoom */
+const DEFAULT_ZOOM_VALUE = 100
+/** Maximum zoom value */
+const MAX_ZOOM_VALUE = 1000
+/** Minimum zoom value */
+const MIN_ZOOM_VALUE = 50
+/** Factor to zoom by (zoom = ZOOM_FACTOR * STEP_SIZE) */
+const ZOOM_FACTOR = 10
+/** Factor to pan by (pan = PAN_FACTOR * STEP_SIZE) */
+const PAN_FACTOR = 10
+
+/** BEGIN STYLING VALUES */
+
+/** Timeline background color. */
+const COLOR_BACKGROUND = 'grey'
+
+/** Layer label background color. */
+const COLOR_LABEL_BACKGROUND = 'black'
+
+/** Color of line separating timeline rows. */
+const COLOR_LINE = 'black'
+/** Height of line separating rows. */
+const THICKNESS_LINE = 1
+
+/** Text properties. */
+const TEXT_FONT_FAMILY = 'Calibri'
+const TEXT_FONT_SIZE = 16
+const TEXT_COLOR = 'white'
+
+/** Logical object properties. */
+const COLOR_LOGIC_OBJECT_FILL = 'rgba(255, 255, 102, 0.5)'
+const COLOR_LOGIC_OBJECT_BORDER = 'rgba(255, 255, 0, 0.5)'
+const THICKNESS_LOGIC_OBJECT_BORDER = 1
+
+/** Time-based object properties. */
+const COLOR_TIME_OBJECT_FILL = 'rgba(105, 35, 140, 0.5)'
+const COLOR_TIME_OBJECT_BORDER = 'rgba(53, 17, 71, 0.5)'
+const THICKNESS_TIME_OBJECT_BORDER = 1
+
+/** Timeline object height as a proportion of the row height. */
+const TIMELINE_OBJECT_HEIGHT = 2 / 3
+
+/** END STYLING VALUES */
+
 class LogicalObjectDrawTime {
 	start: number
 	end: number
@@ -32,10 +82,13 @@ class DrawState {
 }
 
 export class TimelineVisualizer {
+	// Step size.
+	public stepSize: number = DEFAULT_STEP_SIZE
+
 	 /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
-	private readonly _layerLabelWidthProportionOfCanvas = 0.25
+	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
 	/** @private @readonly Default time range to display. */
-	private readonly _defaultDrawRange = 5000
+	private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
 	// List of layers to display.
 	private _layers: Array<string> = ['mainLayer', 'graphicsLayer', 'DSK', 'PSALayer']
@@ -98,7 +151,7 @@ export class TimelineVisualizer {
 	constructor (canvasId: string) {
 		// Initialise other values.
 		this._mouseDown = false
-		this._timelineZoom = 100
+		this._timelineZoom = DEFAULT_ZOOM_VALUE
 		this._lastTimelineDictionary = {}
 		this._lastLogicalDictionary = {}
 		this._logicalObjectsDrawn = {}
@@ -118,7 +171,7 @@ export class TimelineVisualizer {
 		let background = new fabric.Rect({
 			left: 0,
 			top: 0,
-			fill: 'grey',
+			fill: COLOR_BACKGROUND,
 			width: this._canvasWidth,
 			height: this._canvasHeight,
 			selectable: false
@@ -265,7 +318,7 @@ export class TimelineVisualizer {
 		// Store list of active times for each object.
 		let logicalObjectsActiveTimes: LogicalObjectDrawTimes = { }
 		// Stores the last recorded state for each object.
-		let logicalObjectsLastState: { [objName: string]: boolean } = { '': false }
+		let logicalObjectsLastState: { [objName: string]: boolean } = { }
 
 		// Go through each change of state.
 		changesOfState.forEach(time => {
@@ -337,7 +390,7 @@ export class TimelineVisualizer {
 			let layerRect = new fabric.Rect({
 				left: 0,
 				top: _i * this._rowHeight,
-				fill: 'black',
+				fill: COLOR_LABEL_BACKGROUND,
 				width: this._layerLabelWidth,
 				height: this._rowHeight,
 				selectable: false,
@@ -347,10 +400,10 @@ export class TimelineVisualizer {
 			// Create label.
 			let layerText = new fabric.Text(this._layers[_i], {
 				width: this._layerLabelWidth,
-				fontFamily: 'Calibri',
-				fontSize: 16,
+				fontFamily: TEXT_FONT_FAMILY,
+				fontSize: TEXT_FONT_SIZE,
 				textAlign: 'left',
-				fill: 'white',
+				fill: TEXT_COLOR,
 				selectable: false,
 				top: (_i * this._rowHeight) + (this._rowHeight / 2),
 				name: this._layers[_i]
@@ -372,9 +425,9 @@ export class TimelineVisualizer {
 				let layerLine = new fabric.Rect({
 					left: this._layerLabelWidth,
 					top: _i * this._rowHeight,
-					fill: 'black',
+					fill: COLOR_LINE,
 					width: this._timelineWidth,
-					height: 1,
+					height: THICKNESS_LINE,
 					selectable: false,
 					name: 'Line'
 				})
@@ -408,7 +461,7 @@ export class TimelineVisualizer {
 		this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
 
 		// Set timeline object height.
-		this._timelineObjectHeight = (this._rowHeight / 3) * 2
+		this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT
 
 		// Create a dictionary out of timeline objects for indexing by name.
 		let timelineDictionary: TimelineDictionary = {}
@@ -575,19 +628,19 @@ export class TimelineVisualizer {
 				width: 0,
 				height: 0,
 				top: 0,
-				fill: 'rgba(105, 35, 140, 0.5)',
-				stroke: 'rgba(53, 17, 71, 0.5)',
-				strokeWidth: 1,
+				fill: COLOR_TIME_OBJECT_FILL,
+				stroke: COLOR_TIME_OBJECT_BORDER,
+				strokeWidth: THICKNESS_TIME_OBJECT_BORDER,
 				selectable: false,
 				visible: false,
 				name: element.id as string
 			})
 
 			let resolvedObjectLabel = new fabric.Text(element.id, {
-				fontFamily: 'Calibri',
-				fontSize: 16,
+				fontFamily: TEXT_FONT_FAMILY,
+				fontSize: TEXT_FONT_SIZE,
 				textAlign: 'center',
-				fill: 'white',
+				fill: TEXT_COLOR,
 				selectable: false,
 				top: 0,
 				left: 0,
@@ -613,9 +666,9 @@ export class TimelineVisualizer {
 					width: 0,
 					height: 0,
 					top: 0,
-					fill: 'rgba(255, 255, 102, 0.5)',
-					stroke: 'rgba(255, 255, 0, 0.5)',
-					strokeWidth: 1,
+					fill: COLOR_LOGIC_OBJECT_FILL,
+					stroke: COLOR_LOGIC_OBJECT_BORDER,
+					strokeWidth: THICKNESS_LOGIC_OBJECT_BORDER,
 					selectable: false,
 					visible: false,
 					name: name + _i
@@ -623,10 +676,10 @@ export class TimelineVisualizer {
 
 				// Add a label to the rectangle containing the object ID.
 				let resolvedObjectLabel = new fabric.Text(name, {
-					fontFamily: 'Calibri',
-					fontSize: 16,
+					fontFamily: TEXT_FONT_FAMILY,
+					fontSize: TEXT_FONT_SIZE,
 					textAlign: 'center',
-					fill: 'white',
+					fill: TEXT_COLOR,
 					selectable: false,
 					top: 0,
 					left: 0,
@@ -882,14 +935,14 @@ export class TimelineVisualizer {
 			// If scrolling "up".
 			if (event.deltaY > 0) {
 				// Zoom out.
-				this._timelineZoom = Math.min(this._timelineZoom + 10, 1000)
+				this._timelineZoom = Math.min(this._timelineZoom + (ZOOM_FACTOR * this.stepSize), MAX_ZOOM_VALUE)
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline()
 			} else if (event.deltaY < 0) {
 				// Zoom in.
-				this._timelineZoom = Math.max(this._timelineZoom - 10, 50)
+				this._timelineZoom = Math.max(this._timelineZoom - (ZOOM_FACTOR * this.stepSize), MIN_ZOOM_VALUE)
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
@@ -897,7 +950,7 @@ export class TimelineVisualizer {
 			}
 		} else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
 			// Pan.
-			this.canvasScrollByDeltaX(-(event.deltaX * 10))
+			this.canvasScrollByDeltaX(-(event.deltaX * (PAN_FACTOR * this.stepSize)))
 		}
 
 		// Prevent event.
