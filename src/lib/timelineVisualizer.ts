@@ -33,117 +33,117 @@ class DrawState {
 
 export class TimelineVisualizer {
 	 /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
-	private readonly layerLabelWidthProportionOfCanvas = 0.25
+	private readonly _layerLabelWidthProportionOfCanvas = 0.25
 	/** @private @readonly Default time range to display. */
-	private readonly defaultDrawRange = 5000
+	private readonly _defaultDrawRange = 5000
 
 	// List of layers to display.
-	private layers: Array<string> = ['mainLayer', 'graphicsLayer', 'DSK', 'PSALayer']
+	private _layers: Array<string> = ['mainLayer', 'graphicsLayer', 'DSK', 'PSALayer']
 	// Width of column of layer labels.
-	private layerLabelWidth: number
+	private _layerLabelWidth: number
 
 	// Canvas ID.
-	private canvasId: string
+	private _canvasId: string
 	// Canvas to draw to.
-	private canvas: fabric.Canvas
+	private _canvas: fabric.Canvas
 
 	// Width and height of the canvas, in pixels.
-	private canvasWidth: number
-	private canvasHeight: number
+	private _canvasWidth: number
+	private _canvasHeight: number
 
 	// Height of a timeline row, in pixels.
-	private rowHeight: number
+	private _rowHeight: number
 
 	// Store the last timeline drawn, for redrawing and comparisons.
-	private lastTimelineDictionary: TimelineDictionary
-	private lastLogicalDictionary: LogicalObjectDictionary
-	private logicalObjectsDrawn: LogicalObjectDrawTimes
+	private _lastTimelineDictionary: TimelineDictionary
+	private _lastLogicalDictionary: LogicalObjectDictionary
+	private _logicalObjectsDrawn: LogicalObjectDrawTimes
 
 	// Width of the actual timeline within the canvas, in pixels.
-	private timelineWidth: number
+	private _timelineWidth: number
 	// Start and end of the timeline relative to the left of the canvas, in pixels.
-	private timelineStart: number
+	private _timelineStart: number
 
 	// Height of objects to draw.
-	private timelineObjectHeight: number
+	private _timelineObjectHeight: number
 
 	// Start and end time of the current view. Defines the objects within view on the timeline.
-	private drawTimeStart: number
-	private drawTimeEnd: number
+	private _drawTimeStart: number
+	private _drawTimeEnd: number
 	// Current range of times to draw.
-	private drawTimeRange: number
+	private _drawTimeRange: number
 
 	// Scaled timeline start and end, according to zoom.
-	private scaledDrawTimeRange: number
+	private _scaledDrawTimeRange: number
 
 	// Width of an object per unit time of duration.
-	private pixelsWidthPerUnitTime: number
+	private _pixelsWidthPerUnitTime: number
 
 	// Store whether the mouse is held down, for scrolling.
-	private mouseDown: boolean
+	private _mouseDown: boolean
 
 	// Last x positions of the mouse cursor (on click and on drag), for scrolling.
-	private mouseLastClickX: number
-	private mouseLastX: number
+	private _mouseLastClickX: number
+	private _mouseLastX: number
 
 	// Last direction the user moved on the timeline, helps to smooth changing scroll direction.
-	private lastScrollDirection: number
+	private _lastScrollDirection: number
 
 	// Current zoom amount.
-	private timelineZoom: number
+	private _timelineZoom: number
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
 	constructor (canvasId: string) {
 		// Initialise other values.
-		this.mouseDown = false
-		this.timelineZoom = 100
-		this.lastTimelineDictionary = {}
-		this.lastLogicalDictionary = {}
-		this.logicalObjectsDrawn = {}
+		this._mouseDown = false
+		this._timelineZoom = 100
+		this._lastTimelineDictionary = {}
+		this._lastLogicalDictionary = {}
+		this._logicalObjectsDrawn = {}
 
-		this.canvasId = canvasId
+		this._canvasId = canvasId
 
 		this.initCanvas()
 
 		// Calculate width of label column.
-		this.layerLabelWidth = this.canvasWidth * this.layerLabelWidthProportionOfCanvas
+		this._layerLabelWidth = this._canvasWidth * this._layerLabelWidthProportionOfCanvas
 
 		// Calculate timeline width and start point.
-		this.timelineWidth = this.canvasWidth - this.layerLabelWidth
-		this.timelineStart = this.layerLabelWidth
+		this._timelineWidth = this._canvasWidth - this._layerLabelWidth
+		this._timelineStart = this._layerLabelWidth
 
 		// Draw background.
 		let background = new fabric.Rect({
 			left: 0,
 			top: 0,
 			fill: 'grey',
-			width: this.canvasWidth,
-			height: this.canvasHeight,
+			width: this._canvasWidth,
+			height: this._canvasHeight,
 			selectable: false
 		})
-		this.canvas.add(background)
+		this._canvas.add(background)
 	}
 
 	initCanvas () {
 		// Create new canvas object.
-		this.canvas = new fabric.Canvas(this.canvasId)
+		this._canvas = new fabric.Canvas(this._canvasId)
 
 		// Disable group selection.
-		this.canvas.selection = false
+		this._canvas.selection = false
 		// Set cursor.
-		this.canvas.hoverCursor = 'default'
+		this._canvas.hoverCursor = 'default'
 
 		// Register canvas interaction event handlers.
-		this.canvas.on('mouse:down', event => this.canvasMouseDown(event))
-		this.canvas.on('mouse:up', event => this.canvasMouseUp(event))
-		this.canvas.on('mouse:move', event => this.canvasMouseMove(event))
-		this.canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
+		this._canvas.on('mouse:down', event => this.canvasMouseDown(event))
+		this._canvas.on('mouse:up', event => this.canvasMouseUp(event))
+		this._canvas.on('mouse:move', event => this.canvasMouseMove(event))
+		this._canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
 
 		// Get width and height of canvas.
-		this.canvasWidth = this.canvas.getWidth()
-		this.canvasHeight = this.canvas.getHeight()
+		this._canvasWidth = this._canvas.getWidth()
+		this._canvasHeight = this._canvas.getHeight()
 	}
 
 	/**
@@ -156,7 +156,7 @@ export class TimelineVisualizer {
 
 		// Calculate height of rows based on number of layers.
 		// In future layers will be pulled from the timeline.
-		this.rowHeight = this.calculateRowHeight(this.layers)
+		this._rowHeight = this.calculateRowHeight(this._layers)
 
 		// Draw the layer labels.
 		this.drawLayerLabels()
@@ -323,7 +323,7 @@ export class TimelineVisualizer {
 	 * @returns Number of layers.
 	 */
 	calculateRowHeight (layers: Array<string>): number {
-		return this.canvasHeight / layers.length
+		return this._canvasHeight / layers.length
 	}
 
 	/**
@@ -331,29 +331,29 @@ export class TimelineVisualizer {
 	 */
 	drawLayerLabels () {
 		// Iterate through layers.
-		for (let _i = 0; _i < this.layers.length; _i++) {
+		for (let _i = 0; _i < this._layers.length; _i++) {
 			// this.timeLineObjects.layerLabels[this.layers[_i]] = []
 			// Create a background rectangle.
 			let layerRect = new fabric.Rect({
 				left: 0,
-				top: _i * this.rowHeight,
+				top: _i * this._rowHeight,
 				fill: 'black',
-				width: this.layerLabelWidth,
-				height: this.rowHeight,
+				width: this._layerLabelWidth,
+				height: this._rowHeight,
 				selectable: false,
-				name: this.layers[_i]
+				name: this._layers[_i]
 			})
 
 			// Create label.
-			let layerText = new fabric.Text(this.layers[_i], {
-				width: this.layerLabelWidth,
+			let layerText = new fabric.Text(this._layers[_i], {
+				width: this._layerLabelWidth,
 				fontFamily: 'Calibri',
 				fontSize: 16,
 				textAlign: 'left',
 				fill: 'white',
 				selectable: false,
-				top: (_i * this.rowHeight) + (this.rowHeight / 2),
-				name: this.layers[_i]
+				top: (_i * this._rowHeight) + (this._rowHeight / 2),
+				name: this._layers[_i]
 			})
 
 			// If this is the topmost label, draw to screen.
@@ -365,15 +365,15 @@ export class TimelineVisualizer {
 				})
 
 				// Draw.
-				this.canvas.add(layerGroup)
+				this._canvas.add(layerGroup)
 				// this.timeLineObjects.layerLabels[layerText.text as string].push(layerGroup)
 			} else {
 				// Create line.
 				let layerLine = new fabric.Rect({
-					left: this.layerLabelWidth,
-					top: _i * this.rowHeight,
+					left: this._layerLabelWidth,
+					top: _i * this._rowHeight,
 					fill: 'black',
-					width: this.timelineWidth,
+					width: this._timelineWidth,
 					height: 1,
 					selectable: false,
 					name: 'Line'
@@ -385,7 +385,7 @@ export class TimelineVisualizer {
 				})
 
 				// Draw.
-				this.canvas.add(layerGroup)
+				this._canvas.add(layerGroup)
 				// this.timeLineObjects.layerLabels[layerText.text as string].push(layerGroup)
 			}
 		}
@@ -397,18 +397,18 @@ export class TimelineVisualizer {
 	 */
 	drawInitialTimeline (timeline: ResolvedTimeline) {
 		// Set time range.
-		this.drawTimeRange = this.defaultDrawRange
+		this._drawTimeRange = this._defaultDrawRange
 
 		// Calculate new zoom values.
 		// this.updateZoomValues()
 		this.updateScaledDrawTimeRange()
 
 		// Set timeline start and end times.
-		this.drawTimeStart = 0
-		this.drawTimeEnd = this.drawTimeStart + this.scaledDrawTimeRange
+		this._drawTimeStart = 0
+		this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
 
 		// Set timeline object height.
-		this.timelineObjectHeight = (this.rowHeight / 3) * 2
+		this._timelineObjectHeight = (this._rowHeight / 3) * 2
 
 		// Create a dictionary out of timeline objects for indexing by name.
 		let timelineDictionary: TimelineDictionary = {}
@@ -429,9 +429,9 @@ export class TimelineVisualizer {
 		this.createLogicBasedFabricObjects(drawTimes)
 
 		// Store the objects to draw.
-		this.lastTimelineDictionary = timelineDictionary
-		this.lastLogicalDictionary = logicalObjects
-		this.logicalObjectsDrawn = drawTimes
+		this._lastTimelineDictionary = timelineDictionary
+		this._lastLogicalDictionary = logicalObjects
+		this._logicalObjectsDrawn = drawTimes
 
 		// Draw timeline.
 		this.redrawTimeline()
@@ -443,11 +443,11 @@ export class TimelineVisualizer {
 	 */
 	redrawTimeline () {
 		// Calculate how many pixels are required per unit time.
-		this.pixelsWidthPerUnitTime = this.timelineWidth / (this.drawTimeEnd - this.drawTimeStart)
+		this._pixelsWidthPerUnitTime = this._timelineWidth / (this._drawTimeEnd - this._drawTimeStart)
 
 		// Get states for time-based and logical objects.
-		let timeStates = this.getTimelineTimeDrawState(this.lastTimelineDictionary)
-		let logicalStates = this.getTimelineLogicalDrawState(this.lastLogicalDictionary, this.logicalObjectsDrawn)
+		let timeStates = this.getTimelineTimeDrawState(this._lastTimelineDictionary)
+		let logicalStates = this.getTimelineLogicalDrawState(this._lastLogicalDictionary, this._logicalObjectsDrawn)
 
 		// Draw the current state.
 		this.drawTimelineState({ ...timeStates, ...logicalStates })
@@ -460,7 +460,7 @@ export class TimelineVisualizer {
 	drawTimelineState (currentDrawState: TimelineDrawState) {
 		// Iterate through cavas.
 		// Seemingly the only way to update objects without clearing the canvas.
-		this.canvas.getObjects().forEach(element => {
+		this._canvas.getObjects().forEach(element => {
 			if (element.name !== undefined) {
 				// Only interested in fabric.Rect and fabric.Text
 				if (element.type === 'rect' || element.type === 'text') {
@@ -492,7 +492,7 @@ export class TimelineVisualizer {
 		})
 
 		// Tell canvas to re-render all objects.
-		this.canvas.renderAll()
+		this._canvas.renderAll()
 	}
 
 	/**
@@ -554,8 +554,8 @@ export class TimelineVisualizer {
 			}
 
 			// Set state properties.
-			state.height = this.timelineObjectHeight
-			state.left = this.timelineStart + this.getObjectOffsetFromTimelineStart(start)
+			state.height = this._timelineObjectHeight
+			state.left = this._timelineStart + this.getObjectOffsetFromTimelineStart(start)
 			state.top = objectTop
 			state.width = objectWidth
 			state.visible = true
@@ -595,8 +595,8 @@ export class TimelineVisualizer {
 				name: element.id as string
 			})
 
-			this.canvas.add(resolvedObjectRect)
-			this.canvas.add(resolvedObjectLabel)
+			this._canvas.add(resolvedObjectRect)
+			this._canvas.add(resolvedObjectLabel)
 		})
 	}
 
@@ -634,8 +634,8 @@ export class TimelineVisualizer {
 					name: name + _i
 				})
 
-				this.canvas.add(resolvedObjectRect)
-				this.canvas.add(resolvedObjectLabel)
+				this._canvas.add(resolvedObjectRect)
+				this._canvas.add(resolvedObjectLabel)
 			}
 		}
 	}
@@ -699,7 +699,7 @@ export class TimelineVisualizer {
 	 */
 	getObjectOffsetFromTimelineStart (start: number): number {
 		// Calculate offset.
-		let offset = (start - this.drawTimeStart) * this.pixelsWidthPerUnitTime
+		let offset = (start - this._drawTimeStart) * this._pixelsWidthPerUnitTime
 
 		// Offset cannot be to the left of the timeline start position.
 		if (offset < 0) {
@@ -721,15 +721,15 @@ export class TimelineVisualizer {
 		let startTime = start
 
 		// If the start time is less than the timeline start, set to timeline start.
-		if (startTime < this.drawTimeStart) {
-			startTime = this.drawTimeStart
+		if (startTime < this._drawTimeStart) {
+			startTime = this._drawTimeStart
 		}
 
 		// Calculate duration of the object remaining on the timeline.
 		let duration = endTime - startTime
 
 		// Return end point position in pixels.
-		return duration * this.pixelsWidthPerUnitTime
+		return duration * this._pixelsWidthPerUnitTime
 	}
 
 	/**
@@ -748,10 +748,10 @@ export class TimelineVisualizer {
 	 * @returns {true} if object should be shown on the timeline.
 	 */
 	showOnTimeline (start: number, end: number) {
-		let withinTimeline = start >= this.drawTimeStart || end <= this.drawTimeEnd
-		let duringTimeline = this.drawTimeStart > start && this.drawTimeEnd < end
-		let beforeTimeline = end < this.drawTimeStart
-		let afterTimeline = start > this.drawTimeEnd
+		let withinTimeline = start >= this._drawTimeStart || end <= this._drawTimeEnd
+		let duringTimeline = this._drawTimeStart > start && this._drawTimeEnd < end
+		let beforeTimeline = end < this._drawTimeStart
+		let afterTimeline = start > this._drawTimeEnd
 
 		// return withinTimeline && !beforeTimeline && !afterTimeline
 		return (withinTimeline || duringTimeline) && !beforeTimeline && !afterTimeline
@@ -763,11 +763,11 @@ export class TimelineVisualizer {
 	 * @returns Position relative to top of canvas in pixels.
 	 */
 	getObjectOffsetFromTop (object: TimelineObject): number {
-		let top = this.layers.indexOf(object.LLayer.toString()) * this.rowHeight
+		let top = this._layers.indexOf(object.LLayer.toString()) * this._rowHeight
 
 		// Time-based events are placed at the bottom of a row.
 		if (object.trigger.type !== TriggerType.LOGICAL) {
-			top += this.rowHeight / 3
+			top += this._rowHeight / 3
 		}
 
 		return top
@@ -782,10 +782,10 @@ export class TimelineVisualizer {
 		let event = opt.e
 
 		// Store mouse is down.
-		this.mouseDown = true
+		this._mouseDown = true
 
 		// Store X position of mouse on click.
-		this.mouseLastClickX = event.clientX
+		this._mouseLastClickX = event.clientX
 
 		// Prevent event.
 		event.preventDefault()
@@ -798,9 +798,9 @@ export class TimelineVisualizer {
 	 */
 	canvasMouseUp (opt) {
 		// Mouse no longer down.
-		this.mouseDown = false
+		this._mouseDown = false
 		// Reset scroll direction.
-		this.lastScrollDirection = 0
+		this._lastScrollDirection = 0
 
 		// Prevent event.
 		opt.e.preventDefault()
@@ -813,46 +813,46 @@ export class TimelineVisualizer {
 	 */
 	canvasMouseMove (opt) {
 		// If mouse is down.
-		if (this.mouseDown) {
+		if (this._mouseDown) {
 			// Extract event.
 			let event = opt.e
 
 			// If we are beginning scrolling, we can move freely.
-			if (this.lastScrollDirection === undefined || this.lastScrollDirection === 0) {
+			if (this._lastScrollDirection === undefined || this._lastScrollDirection === 0) {
 				// Store current mouse X.
-				this.mouseLastX = event.clientX
+				this._mouseLastX = event.clientX
 
 				// Calculate change in X.
-				let deltaX = event.clientX - this.mouseLastClickX
+				let deltaX = event.clientX - this._mouseLastClickX
 
 				// Store scrolling direction.
 				if (deltaX < 0) {
-					this.lastScrollDirection = -1
+					this._lastScrollDirection = -1
 				} else {
-					this.lastScrollDirection = 1
+					this._lastScrollDirection = 1
 				}
 
 				// Scroll to new X position.
 				this.canvasScrollByDeltaX(-deltaX)
 			} else {
 				// Calculate scroll direction.
-				let direction = this.mouseLastX - event.clientX
+				let direction = this._mouseLastX - event.clientX
 
 				// If changing direction, store new direction but don't scroll.
-				if (direction < 0 && this.lastScrollDirection === 1) {
-					this.mouseLastClickX = event.clientX
+				if (direction < 0 && this._lastScrollDirection === 1) {
+					this._mouseLastClickX = event.clientX
 
-					this.lastScrollDirection = -1
-				} else if (direction > 0 && this.lastScrollDirection === -1) {
-					this.mouseLastClickX = event.clientX
+					this._lastScrollDirection = -1
+				} else if (direction > 0 && this._lastScrollDirection === -1) {
+					this._mouseLastClickX = event.clientX
 
-					this.lastScrollDirection = 1
+					this._lastScrollDirection = 1
 				} else {
 					// Calculate change in X.
-					let deltaX = event.clientX - this.mouseLastClickX
+					let deltaX = event.clientX - this._mouseLastClickX
 
 					// Store last X position.
-					this.mouseLastX = event.clientX
+					this._mouseLastX = event.clientX
 
 					// Move by change in X.
 					this.canvasScrollByDeltaX(-deltaX)
@@ -870,10 +870,10 @@ export class TimelineVisualizer {
 		let event = opt.e
 
 		// Get mouse pointer coordinates on canvas.
-		let canvasCoord = this.canvas.getPointer(event.e)
+		let canvasCoord = this._canvas.getPointer(event.e)
 
 		// Don't scroll if mouse is not over timeline.
-		if (canvasCoord.x <= this.timelineStart) {
+		if (canvasCoord.x <= this._timelineStart) {
 			return
 		}
 
@@ -882,14 +882,14 @@ export class TimelineVisualizer {
 			// If scrolling "up".
 			if (event.deltaY > 0) {
 				// Zoom out.
-				this.timelineZoom = Math.min(this.timelineZoom + 10, 1000)
+				this._timelineZoom = Math.min(this._timelineZoom + 10, 1000)
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline()
 			} else if (event.deltaY < 0) {
 				// Zoom in.
-				this.timelineZoom = Math.max(this.timelineZoom - 10, 50)
+				this._timelineZoom = Math.max(this._timelineZoom - 10, 50)
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
@@ -911,7 +911,7 @@ export class TimelineVisualizer {
 	 */
 	canvasScrollByDeltaX (deltaX: number) {
 		// Calculate new starting time.
-		let targetStart = this.drawTimeStart + deltaX
+		let targetStart = this._drawTimeStart + deltaX
 
 		// Starting time cannot be < 0.
 		if (targetStart < 0) {
@@ -919,16 +919,16 @@ export class TimelineVisualizer {
 		}
 
 		// Optimisation, don't redraw if nothing has changed.
-		if (targetStart === this.drawTimeStart) {
+		if (targetStart === this._drawTimeStart) {
 			return
 		}
 
 		// Calculate end point.
-		let targetEnd = targetStart + this.scaledDrawTimeRange
+		let targetEnd = targetStart + this._scaledDrawTimeRange
 
 		// Update timeline start and end values.
-		this.drawTimeStart = targetStart
-		this.drawTimeEnd = targetEnd
+		this._drawTimeStart = targetStart
+		this._drawTimeEnd = targetEnd
 
 		// Redraw timeline.
 		this.redrawTimeline()
@@ -938,7 +938,7 @@ export class TimelineVisualizer {
 	 * Calculates the new scaled timeline start and end times according to the current zoom value.
 	 */
 	updateScaledDrawTimeRange () {
-		this.scaledDrawTimeRange = this.drawTimeRange * (this.timelineZoom / 100)
+		this._scaledDrawTimeRange = this._drawTimeRange * (this._timelineZoom / 100)
 	}
 
 	/**
@@ -956,8 +956,8 @@ export class TimelineVisualizer {
 		this.updateScaledDrawTimeRange()
 
 		// Calculate start and end values.
-		let targetStart = coordToTime - (ratio * this.scaledDrawTimeRange)
-		let targetEnd = targetStart + this.scaledDrawTimeRange
+		let targetStart = coordToTime - (ratio * this._scaledDrawTimeRange)
+		let targetEnd = targetStart + this._scaledDrawTimeRange
 
 		// Start cannot be less than 0 but we must preserve the time range to draw.
 		if (targetStart < 0) {
@@ -967,8 +967,8 @@ export class TimelineVisualizer {
 		}
 
 		// Set draw times.
-		this.drawTimeStart = targetStart
-		this.drawTimeEnd = targetEnd
+		this._drawTimeStart = targetStart
+		this._drawTimeEnd = targetEnd
 	}
 
 	/**
@@ -978,13 +978,13 @@ export class TimelineVisualizer {
 	 */
 	cursorPosToTime (cursorX: number): number {
 		// Check if over timeline.
-		if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
 			return -1
 		}
 
 		let ratio = this.getCursorPositionAcrossTimeline(cursorX)
 
-		return this.drawTimeStart + (this.scaledDrawTimeRange * ratio)
+		return this._drawTimeStart + (this._scaledDrawTimeRange * ratio)
 	}
 
 	/**
@@ -994,12 +994,12 @@ export class TimelineVisualizer {
 	 */
 	getCursorPositionAcrossTimeline (cursorX: number): number {
 		// Check if over timeline.
-		if (cursorX <= this.timelineStart || cursorX >= this.timelineStart + this.timelineWidth) {
+		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
 			return -1
 		}
 
-		let diffX = cursorX - this.timelineStart
-		let ratio = diffX / this.timelineWidth
+		let diffX = cursorX - this._timelineStart
+		let ratio = diffX / this._timelineWidth
 
 		return ratio
 	}
