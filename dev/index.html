@@ -11,81 +11,41 @@
         
         var visuals = new TimelineVisualizer.TimelineVisualizer('timeline')
 
-        var anotherTimeline = [
-        {
-            id: 'video0',
-            trigger: {
-                type: 0,
-                value: 1000
-            },
-            duration: 10 * 1000,
-            LLayer: 'mainLayer',
-            content: {}
-        },{
-            id: 'video1',
-            trigger: {
-                type: 0,
-                value: 9000
-            },
-            duration: 31 * 1000,
-            LLayer: 'mainLayer',
-            content: {}
-        },{
-            id: 'graphics0',
-            trigger: {
-                type: 1,
-                value: '#video1.start + 1000'
-            },
-            duration: 10 * 1000,
-            LLayer: 'graphicsLayer',
-            content: {}
-        },{
-            id: 'graphics1',
-            trigger: {
-                type: 1,
-                value: '#video1.start + 15000'
-            },
-            duration: '#video1.end - #graphics1.start',
-            LLayer: 'graphicsLayer',
-            content: {}
-        },{
-            id: 'graphicsKey0',
-            trigger: {
-                type: 3,
-                value: '$LgraphicsLayer & !$LPSALayer'
-            },
-            LLayer: 'DSK',
-            content: {}
-        },{
-            id: 'bgLoop',
-            trigger: {
-                type: 3,
-                value: '!$LmainLayer'
-            },
-            LLayer: 'mainLayer',
-            content: {}
-        },{
-            id: 'importantMessage',
-            trigger: {
-                type: 0,
-                value: 15000
-            },
-            duration: 10 * 1000,
-            LLayer: 'PSALayer',
-            content: {}
-        },{
-            id: 'psaLoop',
-            trigger: {
-                type: 3,
-                value: '$LPSALayer'
-            },
-            LLayer: 'mainLayer',
-            priority: 10,
-            content: {}
-        }
-        ]
+        var timeline = [
+			{
+				id: 'video',
+				layer: '0',
+				enable: {
+					start: 0,
+					end: 100
+				},
+				content: {}
+			},
+			{
+				id: 'graphic0',
+				layer: '1',
+				enable: {
+					start: '#video.start + 10',
+					duration: 10
+				},
+				content: {}
+			},
+			{
+				id: 'graphic1',
+				layer: '1',
+				enable: {
+					start: '#graphic0.end + 10',
+					duration: 15
+				},
+				content: {}
+			}
+		]
 
-        visuals.setTimeline(anotherTimeline)
+        var options = {
+            time: 0
+        }
+
+        visuals.setTimeline(timeline, options)
         
         </script>
     </body>
