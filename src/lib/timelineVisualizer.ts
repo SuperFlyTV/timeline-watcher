@@ -132,7 +132,7 @@ export class TimelineVisualizer {
 	private _timelineZoom: number
 
 	// List of fabric objects created.
-	private _frabricObjects: string[]
+	private _fabricObjects: string[]
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -141,7 +141,7 @@ export class TimelineVisualizer {
 		// Initialise other values.
 		this._mouseDown = false
 		this._timelineZoom = DEFAULT_ZOOM_VALUE
-		this._frabricObjects = []
+		this._fabricObjects = []
 
 		this._canvasId = canvasId
 
@@ -518,7 +518,7 @@ export class TimelineVisualizer {
 		this._canvas.add(resolvedObjectLabel)
 
 		// Add generated objects names to list to prevent duplication.
-		this._frabricObjects.push(name)
+		this._fabricObjects.push(name)
 	}
 
 	/**
@@ -532,7 +532,7 @@ export class TimelineVisualizer {
 
 			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
 				// If the object doesn't already have fabric objects, create new ones.
-				if (this._frabricObjects.indexOf(timeObj.id + ':' + timeObj.resolved.instances[_i].id) === -1) {
+				if (this._fabricObjects.indexOf(timeObj.id + ':' + timeObj.resolved.instances[_i].id) === -1) {
 					this.createFabricObject(timeObj.resolved.instances[_i], timeObj.id)
 				}
 			}
