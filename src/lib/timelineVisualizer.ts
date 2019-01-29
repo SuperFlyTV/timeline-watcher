@@ -123,7 +123,6 @@ export class TimelineVisualizer {
 	private _mouseDown: boolean
 
 	// Last x positions of the mouse cursor (on click and on drag), for scrolling.
-	private _mouseLastClickX: number
 	private _mouseLastX: number
 
 	// Last direction the user moved on the timeline, helps to smooth changing scroll direction.
@@ -657,7 +656,7 @@ export class TimelineVisualizer {
 		this._mouseDown = true
 
 		// Store X position of mouse on click.
-		this._mouseLastClickX = event.clientX
+		this._mouseLastX = event.clientX
 
 		// Prevent event.
 		event.preventDefault()
@@ -695,7 +694,7 @@ export class TimelineVisualizer {
 				this._mouseLastX = event.clientX
 
 				// Calculate change in X.
-				let deltaX = event.clientX - this._mouseLastClickX
+				let deltaX = event.clientX - this._mouseLastX
 
 				// Store scrolling direction.
 				if (deltaX < 0) {
@@ -712,16 +711,16 @@ export class TimelineVisualizer {
 
 				// If changing direction, store new direction but don't scroll.
 				if (direction < 0 && this._lastScrollDirection === 1) {
-					this._mouseLastClickX = event.clientX
+					this._mouseLastX = event.clientX
 
 					this._lastScrollDirection = -1
 				} else if (direction > 0 && this._lastScrollDirection === -1) {
-					this._mouseLastClickX = event.clientX
+					this._mouseLastX = event.clientX
 
 					this._lastScrollDirection = 1
 				} else {
 					// Calculate change in X.
-					let deltaX = event.clientX - this._mouseLastClickX
+					let deltaX = event.clientX - this._mouseLastX
 
 					// Store last X position.
 					this._mouseLastX = event.clientX
@@ -783,7 +782,7 @@ export class TimelineVisualizer {
 	 */
 	canvasScrollByDeltaX (deltaX: number) {
 		// Calculate new starting time.
-		let targetStart = this._drawTimeStart + deltaX
+		let targetStart = this._drawTimeStart + (deltaX / this._pixelsWidthPerUnitTime)
 
 		// Starting time cannot be < 0.
 		if (targetStart < 0) {
