@@ -63,6 +63,12 @@ class DrawState {
 	visible: boolean
 }
 
+class ViewPort {
+	timestamp?: number
+	zoom?: number
+	playing?: number
+}
+
 export class TimelineVisualizer {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
@@ -225,6 +231,43 @@ export class TimelineVisualizer {
 			this._resolvedTimeline = resolvedTimeline
 
 			// Draw timeline.
+			this.redrawTimeline()
+		}
+	}
+
+	/**
+	 * Sets the viewport to a position, zoom, and playback speed.
+	 * Playback speed currently not implemented.
+	 * @param viewPort Object to update viewport with.
+	 */
+	setViewPort (viewPort: ViewPort) {
+		// Whether the viewport has changed.
+		let changed = false
+
+		// If timestamp has been specified.
+		if (viewPort.timestamp !== undefined) {
+			// Set start time to specified time.
+			if (viewPort.timestamp > 0) {
+				this._drawTimeStart = viewPort.timestamp
+				this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
+
+				changed = true
+			}
+		}
+
+		// If zoom has been specified.
+		if (viewPort.zoom !== undefined) {
+			// Zoom to specified zoom.
+			if (viewPort.zoom >= MIN_ZOOM_VALUE && viewPort.zoom <= MAX_ZOOM_VALUE) {
+				this._timelineZoom = viewPort.zoom * this.stepSize
+				this.updateScaledDrawTimeRange()
+				this._drawTimeEnd = this._timelineStart + this._scaledDrawTimeRange
+				changed = true
+			}
+		}
+
+		// Redraw timeline if anything has changed.
+		if (changed === true) {
 			this.redrawTimeline()
 		}
 	}
