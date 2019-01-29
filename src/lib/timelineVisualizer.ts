@@ -5,11 +5,19 @@ import { Resolver, TimelineObject, ResolveOptions, ResolvedTimeline, ResolvedTim
 /** Step size/ time step. */
 const DEFAULT_STEP_SIZE = 1
 /** Draw range (will be multiplied by DEFAULT_STEP_SIZE). */
-const DEFAULT_DRAW_RANGE = 200
+const DEFAULT_DRAW_RANGE = 500
 /** Width of label column. */
 const LABEL_WIDTH_OF_TIMELINE = 0.25
 /** Default zoom */
 const DEFAULT_ZOOM_VALUE = 100
+/** Maximum zoom value */
+const MAX_ZOOM_VALUE = 1000
+/** Minimum zoom value */
+const MIN_ZOOM_VALUE = 50
+/** Factor to zoom by (zoom = ZOOM_FACTOR * STEP_SIZE) */
+const ZOOM_FACTOR = 10
+/** Factor to pan by (pan = PAN_FACTOR * STEP_SIZE) */
+const PAN_FACTOR = 10
 
 /** BEGIN STYLING VALUES */
 
@@ -105,14 +113,30 @@ export class TimelineVisualizer {
 	// Width of an object per unit time of duration.
 	private _pixelsWidthPerUnitTime: number
 
+	// Store whether the mouse is held down, for scrolling.
+	private _mouseDown: boolean
+
+	// Last x positions of the mouse cursor (on click and on drag), for scrolling.
+	private _mouseLastClickX: number
+	private _mouseLastX: number
+
+	// Last direction the user moved on the timeline, helps to smooth changing scroll direction.
+	private _lastScrollDirection: number
+
 	// Current zoom amount.
 	private _timelineZoom: number
+
+	// List of fabric objects created.
+	private _frabricObjects: string[]
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
 	constructor (canvasId: string) {
+		// Initialise other values.
+		this._mouseDown = false
 		this._timelineZoom = DEFAULT_ZOOM_VALUE
+		this._frabricObjects = []
 
 		this._canvasId = canvasId
 
@@ -150,10 +174,10 @@ export class TimelineVisualizer {
 		this._canvas.hoverCursor = 'default'
 
 		// Register canvas interaction event handlers.
-		// this._canvas.on('mouse:down', event => this.canvasMouseDown(event))
-		// this._canvas.on('mouse:up', event => this.canvasMouseUp(event))
-		// this._canvas.on('mouse:move', event => this.canvasMouseMove(event))
-		// this._canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
+		this._canvas.on('mouse:down', event => this.canvasMouseDown(event))
+		this._canvas.on('mouse:up', event => this.canvasMouseUp(event))
+		this._canvas.on('mouse:move', event => this.canvasMouseMove(event))
+		this._canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
 
 		// Get width and height of canvas.
 		this._canvasWidth = this._canvas.getWidth()
@@ -178,7 +202,30 @@ export class TimelineVisualizer {
 
 		// If the timeline contains any objects, draw.
 		if (Object.keys(this._resolvedTimeline.objects).length > 0) {
-			this.drawInitialTimeline(this._resolvedTimeline)
+			this.drawInitialTimeline(this._resolvedTimeline, options)
+		}
+	}
+
+	/**
+	 * Updates the timeline, should be called when actions are added/removed from a timeline
+	 * but the same timeline is being drawn.
+	 * @param {TimelineObject[]} timeline Timeline to draw.
+	 * @param {ResolveOptions} options Resolve options.
+	 */
+	updateTimeline (timeline: TimelineObject[], options: ResolveOptions) {
+		// Resolve the timeline.
+		let resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+
+		// If the timeline contains any objects, draw.
+		if (Object.keys(resolvedTimeline.objects).length > 0) {
+			// Create new fabric objects for new objects in timeline.
+			this.createTimelineFabricObjects(resolvedTimeline.objects)
+
+			// Store the objects to draw.
+			this._resolvedTimeline = resolvedTimeline
+
+			// Draw timeline.
+			this.redrawTimeline()
 		}
 	}
 
@@ -260,8 +307,9 @@ export class TimelineVisualizer {
 	/**
 	 * Draws the timeline initially.
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
+	 * @param {ResolveOptions} options Resolve options.
 	 */
-	drawInitialTimeline (timeline: ResolvedTimeline) {
+	drawInitialTimeline (timeline: ResolvedTimeline, options: ResolveOptions) {
 		// Set time range.
 		this._drawTimeRange = this._defaultDrawRange
 
@@ -269,7 +317,7 @@ export class TimelineVisualizer {
 		this.updateScaledDrawTimeRange()
 
 		// Set timeline start and end times.
-		this._drawTimeStart = 0
+		this._drawTimeStart = options.time
 		this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
 
 		// Set timeline object height.
@@ -426,6 +474,9 @@ export class TimelineVisualizer {
 
 		this._canvas.add(resolvedObjectRect)
 		this._canvas.add(resolvedObjectLabel)
+
+		// Add generated objects names to list to prevent duplication.
+		this._frabricObjects.push(name)
 	}
 
 	/**
@@ -438,7 +489,10 @@ export class TimelineVisualizer {
 			let timeObj = timeline[key]
 
 			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
-				this.createFabricObject(timeObj.resolved.instances[_i], timeObj.id)
+				// If the object doesn't already have fabric objects, create new ones.
+				if (this._frabricObjects.indexOf(timeObj.id + ':' + timeObj.resolved.instances[_i].id) === -1) {
+					this.createFabricObject(timeObj.resolved.instances[_i], timeObj.id)
+				}
 			}
 		}
 	}
@@ -549,9 +603,233 @@ export class TimelineVisualizer {
 	}
 
 	/**
+	 * Handles mouse down event.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseDown (opt) {
+		// Extract event.
+		let event = opt.e
+
+		// Store mouse is down.
+		this._mouseDown = true
+
+		// Store X position of mouse on click.
+		this._mouseLastClickX = event.clientX
+
+		// Prevent event.
+		event.preventDefault()
+		event.stopPropagation()
+	}
+
+	/**
+	 * Handles mouse up event.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseUp (opt) {
+		// Mouse no longer down.
+		this._mouseDown = false
+		// Reset scroll direction.
+		this._lastScrollDirection = 0
+
+		// Prevent event.
+		opt.e.preventDefault()
+		opt.e.stopPropagation()
+	}
+
+	/**
+	 * Handles mouse movement on canvas.
+	 * @param opt Mouse event.
+	 */
+	canvasMouseMove (opt) {
+		// If mouse is down.
+		if (this._mouseDown) {
+			// Extract event.
+			let event = opt.e
+
+			// If we are beginning scrolling, we can move freely.
+			if (this._lastScrollDirection === undefined || this._lastScrollDirection === 0) {
+				// Store current mouse X.
+				this._mouseLastX = event.clientX
+
+				// Calculate change in X.
+				let deltaX = event.clientX - this._mouseLastClickX
+
+				// Store scrolling direction.
+				if (deltaX < 0) {
+					this._lastScrollDirection = -1
+				} else {
+					this._lastScrollDirection = 1
+				}
+
+				// Scroll to new X position.
+				this.canvasScrollByDeltaX(-deltaX)
+			} else {
+				// Calculate scroll direction.
+				let direction = this._mouseLastX - event.clientX
+
+				// If changing direction, store new direction but don't scroll.
+				if (direction < 0 && this._lastScrollDirection === 1) {
+					this._mouseLastClickX = event.clientX
+
+					this._lastScrollDirection = -1
+				} else if (direction > 0 && this._lastScrollDirection === -1) {
+					this._mouseLastClickX = event.clientX
+
+					this._lastScrollDirection = 1
+				} else {
+					// Calculate change in X.
+					let deltaX = event.clientX - this._mouseLastClickX
+
+					// Store last X position.
+					this._mouseLastX = event.clientX
+
+					// Move by change in X.
+					this.canvasScrollByDeltaX(-deltaX)
+				}
+			}
+		}
+	}
+
+	/**
+	 * Handles scroll wheel events on the canvas.
+	 * @param opt Scroll event.
+	 */
+	canvasScrollWheel (opt) {
+		// Extract event.
+		let event = opt.e
+
+		// Get mouse pointer coordinates on canvas.
+		let canvasCoord = this._canvas.getPointer(event.e)
+
+		// Don't scroll if mouse is not over timeline.
+		if (canvasCoord.x <= this._timelineStart) {
+			return
+		}
+
+		// CTRL + scroll to zoom.
+		if (event.ctrlKey === true) {
+			// If scrolling "up".
+			if (event.deltaY > 0) {
+				// Zoom out.
+				this._timelineZoom = Math.min(this._timelineZoom + (ZOOM_FACTOR * this.stepSize), MAX_ZOOM_VALUE * this.stepSize)
+
+				// Zoom relative to cursor position.
+				this.zoomUnderCursor(canvasCoord.x)
+				this.redrawTimeline()
+			} else if (event.deltaY < 0) {
+				// Zoom in.
+				this._timelineZoom = Math.max(this._timelineZoom - (ZOOM_FACTOR * this.stepSize), MIN_ZOOM_VALUE * this.stepSize)
+
+				// Zoom relative to cursor position.
+				this.zoomUnderCursor(canvasCoord.x)
+				this.redrawTimeline()
+			}
+		} else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
+			// Pan.
+			this.canvasScrollByDeltaX(-(event.deltaX * (PAN_FACTOR * this.stepSize)))
+		}
+
+		// Prevent event.
+		event.preventDefault()
+		event.stopPropagation()
+	}
+
+	/**
+	 * Scroll across the canvas by a specified X value.
+	 * @param {number} deltaX Value to move by.
+	 */
+	canvasScrollByDeltaX (deltaX: number) {
+		// Calculate new starting time.
+		let targetStart = this._drawTimeStart + deltaX
+
+		// Starting time cannot be < 0.
+		if (targetStart < 0) {
+			targetStart = 0
+		}
+
+		// Optimisation, don't redraw if nothing has changed.
+		if (targetStart === this._drawTimeStart) {
+			return
+		}
+
+		// Calculate end point.
+		let targetEnd = targetStart + this._scaledDrawTimeRange
+
+		// Update timeline start and end values.
+		this._drawTimeStart = targetStart
+		this._drawTimeEnd = targetEnd
+
+		// Redraw timeline.
+		this.redrawTimeline()
+	}
+
+	/**
 	 * Calculates the new scaled timeline start and end times according to the current zoom value.
 	 */
 	updateScaledDrawTimeRange () {
 		this._scaledDrawTimeRange = this._drawTimeRange * (this._timelineZoom / 100)
+	}
+
+	/**
+	 * Zooms into/out of timeline, keeping the time under the cursor in the same position.
+	 * @param cursorX Position of mouse cursor.
+	 */
+	zoomUnderCursor (cursorX: number) {
+		// Get time under cursor.
+		let coordToTime = this.cursorPosToTime(cursorX)
+
+		// Calculate position of mouse relative to edges of timeline.
+		let ratio = this.getCursorPositionAcrossTimeline(cursorX)
+
+		// Set zoom values.
+		this.updateScaledDrawTimeRange()
+
+		// Calculate start and end values.
+		let targetStart = coordToTime - (ratio * this._scaledDrawTimeRange)
+		let targetEnd = targetStart + this._scaledDrawTimeRange
+
+		// Start cannot be less than 0 but we must preserve the time range to draw.
+		if (targetStart < 0) {
+			let diff = -targetStart
+			targetStart = 0
+			targetEnd += diff
+		}
+
+		// Set draw times.
+		this._drawTimeStart = targetStart
+		this._drawTimeEnd = targetEnd
+	}
+
+	/**
+	 * Gets the current time under the mouse cursor.
+	 * @param cursorX Mouse cursor position (x-axis).
+	 * @returns Time under cursor, or -1 if the cursor is not over the timeline.
+	 */
+	cursorPosToTime (cursorX: number): number {
+		// Check if over timeline.
+		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
+			return -1
+		}
+
+		let ratio = this.getCursorPositionAcrossTimeline(cursorX)
+
+		return this._drawTimeStart + (this._scaledDrawTimeRange * ratio)
+	}
+
+	/**
+	 * Gets the position of the mouse cursor as a percentage of the width of the timeline.
+	 * @param cursorX Mouse cursor position.
+	 * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
+	 */
+	getCursorPositionAcrossTimeline (cursorX: number): number {
+		// Check if over timeline.
+		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
+			return -1
+		}
+
+		let diffX = cursorX - this._timelineStart
+		let ratio = diffX / this._timelineWidth
+
+		return ratio
 	}
 }

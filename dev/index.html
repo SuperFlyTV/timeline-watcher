@@ -38,6 +38,15 @@
 					duration: 15
 				},
 				content: {}
+			},
+			{
+				id: 'video2',
+				layer: '2',
+				enable: {
+					start: '#video.end + 100',
+					end: '#video.end + 400'
+				},
+				content: {}
 			}
 		]
 
@@ -45,7 +54,7 @@
             time: 0
         }
 
-        visuals.setTimeline(timeline, options)
+		visuals.setTimeline(timeline, options)
         
         </script>
     </body>
