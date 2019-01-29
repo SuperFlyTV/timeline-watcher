@@ -19,6 +19,15 @@ const ZOOM_FACTOR = 10
 /** Factor to pan by (pan = PAN_FACTOR * STEP_SIZE) */
 const PAN_FACTOR = 10
 
+/** Time (in ms) between play head updates.
+ * More frequent will be more smooth but incur a redraw overhead.
+ */
+const PLAY_HEAD_UPDATE_INTERVAL = 10
+/** Amount to move play head per second. */
+const DEFAULT_STEP_PER_SECOND = 100
+/** Playhead fabric object name */
+const NAME_PLAYHEAD = 'superfly-timeline:playhead'
+
 /** BEGIN STYLING VALUES */
 
 /** Timeline background color. */
@@ -26,6 +35,12 @@ const COLOR_BACKGROUND = 'grey'
 
 /** Layer label background color. */
 const COLOR_LABEL_BACKGROUND = 'black'
+
+/** Playhead color. */
+const COLOR_PLAYHEAD = 'rgba(255, 0, 0, 0.5)'
+
+/** Playhead thickness. */
+const THICKNESS_PLAYHEAD = 5
 
 /** Color of line separating timeline rows. */
 const COLOR_LINE = 'black'
@@ -96,9 +111,6 @@ export class TimelineVisualizer {
 	// Height of a timeline row, in pixels.
 	private _rowHeight: number
 
-	// Last maximum time.
-	// private _lastMaxTime: number
-
 	// Width of the actual timeline within the canvas, in pixels.
 	private _timelineWidth: number
 	// Start and end of the timeline relative to the left of the canvas, in pixels.
@@ -134,6 +146,18 @@ export class TimelineVisualizer {
 	// List of fabric objects created.
 	private _fabricObjects: string[]
 
+	// Whether or not the playhead should move.
+	private _playHeadPlaying: boolean
+
+	// Number of time units to move the playhead per second.
+	private _timeUnitPerSecond: number
+	// Number of units to move the playhead per update interval.
+	private _playHeadUnitsPerUpdate: number
+	// The current time position of the playhead.
+	private _playHeadTime: number
+	// The playhead position in canvas coordinates.
+	private _playHeadPosition: number
+
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
@@ -142,6 +166,10 @@ export class TimelineVisualizer {
 		this._mouseDown = false
 		this._timelineZoom = DEFAULT_ZOOM_VALUE
 		this._fabricObjects = []
+		this._playHeadPlaying = false
+		this._timeUnitPerSecond = DEFAULT_STEP_PER_SECOND
+		this._playHeadUnitsPerUpdate = this._timeUnitPerSecond / (1000 / PLAY_HEAD_UPDATE_INTERVAL)
+		this._playHeadTime = 0
 
 		this._canvasId = canvasId
 
@@ -154,6 +182,9 @@ export class TimelineVisualizer {
 		this._timelineWidth = this._canvasWidth - this._layerLabelWidth
 		this._timelineStart = this._layerLabelWidth
 
+		// Put playhead at timeline start.
+		this._playHeadPosition = this._timelineStart
+
 		// Draw background.
 		let background = new fabric.Rect({
 			left: 0,
@@ -164,6 +195,31 @@ export class TimelineVisualizer {
 			selectable: false
 		})
 		this._canvas.add(background)
+
+		// Draw playhead.
+		let playhead = new fabric.Rect({
+			left: this._playHeadPosition,
+			top: 0,
+			fill: COLOR_PLAYHEAD,
+			width: THICKNESS_PLAYHEAD,
+			height: this._canvasHeight,
+			selectable: false,
+			name: NAME_PLAYHEAD
+		})
+		this._canvas.add(playhead)
+
+		// Bring playhead to front.
+		this._canvas.getObjects().forEach(element => {
+			if (element.name === NAME_PLAYHEAD) {
+				element.bringToFront()
+			}
+		})
+		// Tell canvas to re-render all objects.
+		this._canvas.renderAll()
+
+		setInterval(function (this) {
+			this.movePlayhead()
+		}.bind(this), PLAY_HEAD_UPDATE_INTERVAL)
 	}
 
 	/**
@@ -208,6 +264,9 @@ export class TimelineVisualizer {
 		// If the timeline contains any objects, draw.
 		if (Object.keys(this._resolvedTimeline.objects).length > 0) {
 			this.drawInitialTimeline(this._resolvedTimeline, options)
+
+			// Start playhead.
+			this._playHeadPlaying = true
 		}
 	}
 
@@ -362,14 +421,14 @@ export class TimelineVisualizer {
 		this._drawTimeStart = options.time
 		this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
 
+		// Move playhead to start time.
+		this._playHeadTime = this._drawTimeStart
+
 		// Set timeline object height.
 		this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT
 
 		// Create fabric objects for all time-based objects.
 		this.createTimelineFabricObjects(timeline.objects)
-
-		// Store the objects to draw.
-		// this._lastMaxTime = this.findMaxEndTime(timeline)
 
 		// Draw timeline.
 		this.redrawTimeline()
@@ -421,6 +480,12 @@ export class TimelineVisualizer {
 								visible: state.visible
 							})
 						}
+					} else if (element.name === NAME_PLAYHEAD) {
+						// Move playhead and bring to front.
+						element.set({
+							left: this._playHeadPosition
+						})
+						element.bringToFront()
 					}
 				}
 			}
@@ -642,6 +707,25 @@ export class TimelineVisualizer {
 		}
 
 		return top
+	}
+
+	/**
+	 * Moves the playhead. Called periodically.
+	 */
+	movePlayhead () {
+		if (this._playHeadPlaying) {
+			// Add time to playhead.
+			this._playHeadTime += this._playHeadUnitsPerUpdate
+
+			// Get playhead position.
+			let pos = this.timeToXCoord(this._playHeadTime)
+
+			// Redraw if playhead has moved.
+			if (pos !== this._playHeadPosition) {
+				this._playHeadPosition = pos
+				this.redrawTimeline()
+			}
+		}
 	}
 
 	/**
@@ -873,5 +957,24 @@ export class TimelineVisualizer {
 		let ratio = diffX / this._timelineWidth
 
 		return ratio
+	}
+
+	/**
+	 * Calculates the X position of a time value.
+	 * @param {number} time The time to convert.
+	 * @returns {number} The X coordinate of the time.
+	 */
+	timeToXCoord (time: number): number {
+		// If playhead is off the canvas
+		if (time < this._drawTimeStart) {
+			return 0
+		}
+
+		if (time > this._drawTimeEnd) {
+			return this._timelineWidth + this._timelineStart
+		}
+
+		// (Proportion of time * timeline width) + layer label width
+		return ((time - this._drawTimeStart) / (this._drawTimeEnd - this._drawTimeStart) * this._timelineWidth) + this._timelineStart
 	}
 }
