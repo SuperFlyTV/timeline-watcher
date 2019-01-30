@@ -850,9 +850,12 @@ export class TimelineVisualizer {
 				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline()
 			}
-		} else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
+		} else if (event.deltaX !== 0) { // Scroll on x-axis
 			// Pan.
 			this.canvasScrollByDeltaX((event.deltaX * (PAN_FACTOR * this.stepSize)))
+		} else if (event.deltaY !== 0 && event.altKey === true) { // Also scroll on alt-key + scroll y-axis
+			// Pan.
+			this.canvasScrollByDeltaX((event.deltaY * (PAN_FACTOR * this.stepSize)))
 		}
 
 		// Prevent event.
