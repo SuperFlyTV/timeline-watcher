@@ -27,6 +27,12 @@ const PLAY_HEAD_UPDATE_INTERVAL = 10
 const DEFAULT_STEP_PER_SECOND = 100
 /** Playhead fabric object name */
 const NAME_PLAYHEAD = 'superfly-timeline:playhead'
+/** Whether the playhead should move as soon as a timeline is added.s */
+const PLAYHEAD_PLAY_BY_DEFAULT = false
+/** If set to false, the timeline will not have a playhead.
+ * Allows for a static view of a timeline object, where playback is not wanted.
+ */
+const DRAW_PLAYHEAD = true
 
 /** BEGIN STYLING VALUES */
 
@@ -78,10 +84,20 @@ class DrawState {
 	visible: boolean
 }
 
+/**
+ * Allows the viewort of the timeline to be set.
+ */
 class ViewPort {
+	/** Timestamp to move the start of the timeline to. */
 	timestamp?: number
+	/** Factor to zoom in on the timeline. */
 	zoom?: number
-	playing?: number
+	/** Whether the playhead should be moving. */
+	playing?: boolean
+	/** The speed of the playhead. */
+	playbackSpeed?: number
+	/** Move the playhead to a specified time. */
+	playheadTime: number
 }
 
 export class TimelineVisualizer {
@@ -153,6 +169,8 @@ export class TimelineVisualizer {
 	private _timeUnitPerSecond: number
 	// Number of units to move the playhead per update interval.
 	private _playHeadUnitsPerUpdate: number
+	// Number of units to move the playhead per update interval, scaled by playback speed.
+	private _playHeadUnitsPerUpdateScaled: number
 	// The current time position of the playhead.
 	private _playHeadTime: number
 	// The playhead position in canvas coordinates.
@@ -169,6 +187,7 @@ export class TimelineVisualizer {
 		this._playHeadPlaying = false
 		this._timeUnitPerSecond = DEFAULT_STEP_PER_SECOND
 		this._playHeadUnitsPerUpdate = this._timeUnitPerSecond / (1000 / PLAY_HEAD_UPDATE_INTERVAL)
+		this._playHeadUnitsPerUpdateScaled = this._playHeadUnitsPerUpdate
 		this._playHeadTime = 0
 
 		this._canvasId = canvasId
@@ -196,30 +215,33 @@ export class TimelineVisualizer {
 		})
 		this._canvas.add(background)
 
-		// Draw playhead.
-		let playhead = new fabric.Rect({
-			left: this._playHeadPosition,
-			top: 0,
-			fill: COLOR_PLAYHEAD,
-			width: THICKNESS_PLAYHEAD,
-			height: this._canvasHeight,
-			selectable: false,
-			name: NAME_PLAYHEAD
-		})
-		this._canvas.add(playhead)
+		// If the playhead should be draw.
+		if (DRAW_PLAYHEAD) {
+			// Draw playhead.
+			let playhead = new fabric.Rect({
+				left: this._playHeadPosition,
+				top: 0,
+				fill: COLOR_PLAYHEAD,
+				width: THICKNESS_PLAYHEAD,
+				height: this._canvasHeight,
+				selectable: false,
+				name: NAME_PLAYHEAD
+			})
+			this._canvas.add(playhead)
 
-		// Bring playhead to front.
-		this._canvas.getObjects().forEach(element => {
-			if (element.name === NAME_PLAYHEAD) {
-				element.bringToFront()
-			}
-		})
-		// Tell canvas to re-render all objects.
-		this._canvas.renderAll()
+			// Bring playhead to front.
+			this._canvas.getObjects().forEach(element => {
+				if (element.name === NAME_PLAYHEAD) {
+					element.bringToFront()
+				}
+			})
+			// Tell canvas to re-render all objects.
+			this._canvas.renderAll()
 
-		setInterval(function (this) {
-			this.movePlayhead()
-		}.bind(this), PLAY_HEAD_UPDATE_INTERVAL)
+			setInterval(function (this) {
+				this.movePlayhead()
+			}.bind(this), PLAY_HEAD_UPDATE_INTERVAL)
+		}
 	}
 
 	/**
@@ -266,7 +288,7 @@ export class TimelineVisualizer {
 			this.drawInitialTimeline(this._resolvedTimeline, options)
 
 			// Start playhead.
-			this._playHeadPlaying = true
+			this._playHeadPlaying = PLAYHEAD_PLAY_BY_DEFAULT
 		}
 	}
 
@@ -324,8 +346,25 @@ export class TimelineVisualizer {
 			}
 		}
 
+		// If the playback speed has been set, set the new playback speed.
+		if (viewPort.playbackSpeed !== undefined) {
+			this._playHeadUnitsPerUpdateScaled = this._playHeadUnitsPerUpdate * viewPort.playbackSpeed
+		}
+
+		// Set playhead playing/ not playing.
+		if (viewPort.playing !== undefined) {
+			this._playHeadPlaying = viewPort.playing
+		}
+
+		if (viewPort.playheadTime !== undefined && viewPort.playheadTime >= 0) {
+			this._playHeadTime = viewPort.playheadTime
+			changed = true
+		}
+
 		// Redraw timeline if anything has changed.
 		if (changed === true) {
+			this.computePlayheadPosition()
+
 			this.redrawTimeline()
 		}
 	}
@@ -445,6 +484,43 @@ export class TimelineVisualizer {
 
 		// Draw the current state.
 		this.drawTimelineState(timeLineState)
+
+		// Find new playhead position.
+		this.computePlayheadPosition()
+
+		// Redraw the playhead.
+		this.redrawPlayHead()
+	}
+
+	/**
+	 * Draws the playhead on the canvas.
+	 */
+	redrawPlayHead () {
+		// Check playhead should be drawn.
+		if (DRAW_PLAYHEAD) {
+			let left = this._playHeadPosition
+			let height = this._canvasHeight
+			let width = THICKNESS_PLAYHEAD
+
+			if (left === -1) {
+				left = 0
+				height = 0
+				width = 0
+			}
+
+			this._canvas.getObjects().forEach(element => {
+				if (element.name === NAME_PLAYHEAD) {
+					// Move playhead and bring to front.
+					element.set({
+						left: left,
+						height: height,
+						width: width
+					})
+					element.bringToFront()
+				}
+			})
+			this._canvas.renderAll()
+		}
 	}
 
 	/**
@@ -480,12 +556,6 @@ export class TimelineVisualizer {
 								visible: state.visible
 							})
 						}
-					} else if (element.name === NAME_PLAYHEAD) {
-						// Move playhead and bring to front.
-						element.set({
-							left: this._playHeadPosition
-						})
-						element.bringToFront()
 					}
 				}
 			}
@@ -713,19 +783,35 @@ export class TimelineVisualizer {
 	 * Moves the playhead. Called periodically.
 	 */
 	movePlayhead () {
-		if (this._playHeadPlaying) {
-			// Add time to playhead.
-			this._playHeadTime += this._playHeadUnitsPerUpdate
+		// Check playhead should be drawn.
+		if (DRAW_PLAYHEAD) {
+			if (this._playHeadPlaying) {
+				// Add time to playhead.
+				this._playHeadTime += this._playHeadUnitsPerUpdateScaled
 
-			// Get playhead position.
-			let pos = this.timeToXCoord(this._playHeadTime)
-
-			// Redraw if playhead has moved.
-			if (pos !== this._playHeadPosition) {
-				this._playHeadPosition = pos
-				this.redrawTimeline()
+				// Calculate new playhead position and redraw if the playhead has moved.
+				if (this.computePlayheadPosition()) {
+					this.redrawPlayHead()
+				}
 			}
 		}
+	}
+
+	/**
+	 * Calulates the playhead position based on time.
+	 * @returns true if the playhead has moved.
+	 */
+	computePlayheadPosition (): boolean {
+		// Get playhead position.
+		let pos = this.timeToXCoord(this._playHeadTime)
+
+		// Redraw if playhead has moved.
+		if (pos !== this._playHeadPosition) {
+			this._playHeadPosition = pos
+			return true
+		}
+
+		return false
 	}
 
 	/**
@@ -967,7 +1053,7 @@ export class TimelineVisualizer {
 	timeToXCoord (time: number): number {
 		// If playhead is off the canvas
 		if (time < this._drawTimeStart) {
-			return 0
+			return -1
 		}
 
 		if (time > this._drawTimeEnd) {
