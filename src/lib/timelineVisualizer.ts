@@ -17,7 +17,7 @@ const MIN_ZOOM_VALUE = 50
 /** Factor to zoom by (zoom = ZOOM_FACTOR * STEP_SIZE) */
 const ZOOM_FACTOR = 10
 /** Factor to pan by (pan = PAN_FACTOR * STEP_SIZE) */
-const PAN_FACTOR = 10
+const PAN_FACTOR = 1
 
 /** Time (in ms) between play head updates.
  * More frequent will be more smooth but incur a redraw overhead.
@@ -936,9 +936,12 @@ export class TimelineVisualizer {
 				this.zoomUnderCursor(canvasCoord.x)
 				this.redrawTimeline()
 			}
-		} else if (event.deltaX !== 0) { // Optimisation, don't rerender if no x-axis scrolling has occurred.
+		} else if (event.deltaX !== 0) { // Scroll on x-axis
 			// Pan.
-			this.canvasScrollByDeltaX(-(event.deltaX * (PAN_FACTOR * this.stepSize)))
+			this.canvasScrollByDeltaX((event.deltaX * (PAN_FACTOR * this.stepSize)))
+		} else if (event.deltaY !== 0 && event.altKey === true) { // Also scroll on alt-key + scroll y-axis
+			// Pan.
+			this.canvasScrollByDeltaX((event.deltaY * (PAN_FACTOR * this.stepSize)))
 		}
 
 		// Prevent event.
