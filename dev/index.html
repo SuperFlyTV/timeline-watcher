@@ -13,7 +13,7 @@
 
         var timeline = [
 			{
-				id: 'video',
+				id: 'video0',
 				layer: '0',
 				enable: {
 					start: 0,
@@ -25,7 +25,7 @@
 				id: 'graphic0',
 				layer: '1',
 				enable: {
-					start: '#video.start + 10',
+					start: '#video0.start + 10',
 					duration: 10
 				},
 				content: {}
@@ -40,11 +40,11 @@
 				content: {}
 			},
 			{
-				id: 'video2',
+				id: 'video1',
 				layer: '2',
 				enable: {
-					start: '#video.end + 100',
-					end: '#video.end + 400'
+					start: '#video0.end + 100',
+					end: '#video0.end + 400'
 				},
 				content: {}
 			}
@@ -55,6 +55,52 @@
         }
 
 		visuals.setTimeline(timeline, options)
+
+		visuals.setViewPort({
+			playing: false,
+			playheadTime: 220
+		})
+
+		var timelineAdded = [
+			{
+				id: 'video2',
+				layer: '0',
+				enable: {
+					start: 0,
+					end: 100
+				},
+				content: {}
+			},
+			{
+				id: 'graphic2',
+				layer: '1',
+				enable: {
+					start: '#video2.start + 10',
+					duration: 10
+				},
+				content: {}
+			},
+			{
+				id: 'graphic3',
+				layer: '1',
+				enable: {
+					start: '#graphic2.end + 10',
+					duration: 15
+				},
+				content: {}
+			},
+			{
+				id: 'video3',
+				layer: '2',
+				enable: {
+					start: '#video2.end + 100',
+					end: '#video2.end + 400'
+				},
+				content: {}
+			}
+		]
+
+		visuals.updateTimeline(timelineAdded)
         
         </script>
     </body>

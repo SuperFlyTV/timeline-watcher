@@ -109,8 +109,9 @@ export class TimelineVisualizer {
 	 /** @private @readonly Default time range to display. */
 	private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
-	// Timeline currently drawn.
-	private _resolvedTimeline: ResolvedTimeline
+	// Timelines currently drawn.
+	private _resolvedTimelines: ResolvedTimeline[]
+	private _currentTimeline: number
 
 	// Width of column of layer labels.
 	private _layerLabelWidth: number
@@ -189,6 +190,8 @@ export class TimelineVisualizer {
 		this._playHeadUnitsPerUpdate = this._timeUnitPerSecond / (1000 / PLAY_HEAD_UPDATE_INTERVAL)
 		this._playHeadUnitsPerUpdateScaled = this._playHeadUnitsPerUpdate
 		this._playHeadTime = 0
+		this._resolvedTimelines = []
+		this._currentTimeline = 0
 
 		this._canvasId = canvasId
 
@@ -274,18 +277,20 @@ export class TimelineVisualizer {
 	 */
 	setTimeline (timeline: TimelineObject[], options: ResolveOptions) {
 		// Resolve timeline.
-		this._resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+		this._resolvedTimelines.push(Resolver.resolveTimeline(timeline, options))
 
 		// Calculate height of rows based on number of layers.
 		// In future layers will be pulled from the timeline.
-		this._rowHeight = this.calculateRowHeight(this._resolvedTimeline.layers)
+		this._rowHeight = this.calculateRowHeight(this._resolvedTimelines[this._currentTimeline].layers)
 
 		// Draw the layer labels.
 		this.drawLayerLabels()
 
 		// If the timeline contains any objects, draw.
-		if (Object.keys(this._resolvedTimeline.objects).length > 0) {
-			this.drawInitialTimeline(this._resolvedTimeline, options)
+		if (Object.keys(this._resolvedTimelines[this._currentTimeline].objects).length > 0) {
+			this.drawInitialTimeline(this._resolvedTimelines[this._currentTimeline], options)
+
+			this._currentTimeline++
 
 			// Start playhead.
 			this._playHeadPlaying = PLAYHEAD_PLAY_BY_DEFAULT
@@ -298,17 +303,39 @@ export class TimelineVisualizer {
 	 * @param {TimelineObject[]} timeline Timeline to draw.
 	 * @param {ResolveOptions} options Resolve options.
 	 */
-	updateTimeline (timeline: TimelineObject[], options: ResolveOptions) {
+	updateTimeline (timeline: TimelineObject[], options?: ResolveOptions) {
+		// If options have not been specified set time to 0.
+		if (options === undefined) {
+			options = {
+				time: 0
+			}
+		}
+
+		// If the playhead is being drawn, the resolve time should be at the playhead time.
+		if (DRAW_PLAYHEAD) {
+			options.time = this._playHeadTime
+		}
+
 		// Resolve the timeline.
 		let resolvedTimeline = Resolver.resolveTimeline(timeline, options)
 
 		// If the timeline contains any objects, draw.
 		if (Object.keys(resolvedTimeline.objects).length > 0) {
-			// Create new fabric objects for new objects in timeline.
-			this.createTimelineFabricObjects(resolvedTimeline.objects)
+			// TODO trim timelines
+
+			for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
+				let currentState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
+
+				this.hideTimelineFabricObjects(currentState)
+			}
 
 			// Store the objects to draw.
-			this._resolvedTimeline = resolvedTimeline
+			this._resolvedTimelines.push(resolvedTimeline)
+
+			// Create new fabric objects for new objects in timeline.
+			this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
+
+			this._currentTimeline++
 
 			// Draw timeline.
 			this.redrawTimeline()
@@ -383,7 +410,8 @@ export class TimelineVisualizer {
 	 */
 	drawLayerLabels () {
 		// Store layers to draw.
-		let layers = Object.keys(this._resolvedTimeline.layers)
+		// TODO get this from all resolved timelines
+		let layers = Object.keys(this._resolvedTimelines[0].layers)
 
 		// Iterate through layers.
 		for (let _i = 0; _i < layers.length; _i++) {
@@ -467,7 +495,7 @@ export class TimelineVisualizer {
 		this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT
 
 		// Create fabric objects for all time-based objects.
-		this.createTimelineFabricObjects(timeline.objects)
+		this.createTimelineFabricObjects(timeline.objects, 0)
 
 		// Draw timeline.
 		this.redrawTimeline()
@@ -480,10 +508,13 @@ export class TimelineVisualizer {
 		// Calculate how many pixels are required per unit time.
 		this._pixelsWidthPerUnitTime = this._timelineWidth / (this._drawTimeEnd - this._drawTimeStart)
 
-		let timeLineState = this.getTimelineDrawState(this._resolvedTimeline)
+		// Draw each resolved timeline.
+		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
+			let timeLineState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
 
-		// Draw the current state.
-		this.drawTimelineState(timeLineState)
+			// Draw the current state.
+			this.drawTimelineState(timeLineState)
+		}
 
 		// Find new playhead position.
 		this.computePlayheadPosition()
@@ -568,9 +599,10 @@ export class TimelineVisualizer {
 	/**
 	 * Returns the draw states for all timeline objects.
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
+	 * @param {number} timelineIndex Index of timeline being drawn.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	getTimelineDrawState (timeline: ResolvedTimeline): TimelineDrawState {
+	getTimelineDrawState (timeline: ResolvedTimeline, timelineIndex: number): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 
 		for (let key in timeline.objects) {
@@ -579,9 +611,9 @@ export class TimelineVisualizer {
 
 			for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
 				let instanceObj = timeObj.resolved.instances[_i]
-				let name = parentID + ':' + (instanceObj.id as string)
+				let name = timelineIndex.toString() + ':' + parentID + ':' + (instanceObj.id as string)
 
-				currentDrawState[name] = this.createStateForObject(parentID, instanceObj.start as number, instanceObj.end as number)
+				currentDrawState[name] = this.createStateForObject(parentID, instanceObj.start as number, instanceObj.end as number, timelineIndex)
 			}
 		}
 
@@ -593,16 +625,17 @@ export class TimelineVisualizer {
 	 * @param {string} parentID Name of the object's parent.
 	 * @param {number} start Start time.
 	 * @param {number} end End time.
+	 * @param {number} timelineIndex Index of timeline being drawn.
 	 * @returns {DrawState} State of the object to draw.
 	 */
-	createStateForObject (parentID: string, start: number, end: number): DrawState {
+	createStateForObject (parentID: string, start: number, end: number, timelineIndex: number): DrawState {
 		// Default state (hidden).
 		let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
 		// State should be default if the object is not being shown.
 		if (this.showOnTimeline(start, end)) {
 			// Get object dimensions and position.
 			let objectWidth = this.getObjectWidth(start, end)
-			let objectTop = this.getObjectOffsetFromTop(parentID)
+			let objectTop = this.getObjectOffsetFromTop(parentID, timelineIndex)
 
 			// Set state properties.
 			state.height = this._timelineObjectHeight
@@ -620,10 +653,7 @@ export class TimelineVisualizer {
 	 * @param {TimelineObjectInstance} object Object to draw.
 	 * @param {string} parentName Name of the object's parent (the object the instance belongs to).
 	 */
-	createFabricObject (object: TimelineObjectInstance, parentName: string) {
-		// Create name from parent name and instance name.
-		let name = parentName + ':' + (object.id as string)
-
+	createFabricObject (name: string) {
 		let resolvedObjectRect = new fabric.Rect({
 			left: 0,
 			width: 0,
@@ -659,19 +689,58 @@ export class TimelineVisualizer {
 	/**
 	 * Creates all the fabric objects for time-based objects.
 	 * @param {ResolvedTimelineObjects} timeline Objects to draw.
+	 * @param {number} timelineIndex Index of timeline being drawn.
 	 */
-	createTimelineFabricObjects (timeline: ResolvedTimelineObjects) {
+	createTimelineFabricObjects (timeline: ResolvedTimelineObjects, timelineIndex: number) {
 		for (let key in timeline) {
 			// Store timeline object to save on array indexing.
 			let timeObj = timeline[key]
 
 			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
+				// Create name.
+				let name = timelineIndex.toString() + ':' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
+
 				// If the object doesn't already have fabric objects, create new ones.
-				if (this._fabricObjects.indexOf(timeObj.id + ':' + timeObj.resolved.instances[_i].id) === -1) {
-					this.createFabricObject(timeObj.resolved.instances[_i], timeObj.id)
+				if (this._fabricObjects.indexOf(name) === -1) {
+					this.createFabricObject(name)
 				}
 			}
 		}
+	}
+
+	/**
+	 * Hides all of the timeline objects in the current state.
+	 * @param currentDrawState State to hide.
+	 */
+	hideTimelineFabricObjects (currentDrawState: TimelineDrawState) {
+		this._canvas.getObjects().forEach(element => {
+			if (element.name !== undefined) {
+				// Only interested in fabric.Rect and fabric.Text
+				if (element.type === 'rect' || element.type === 'text') {
+					// Check element is affected by current state.
+					if (element.name in currentDrawState) {
+						if (element.type === 'text') {
+							element.set({
+								top: 0,
+								left: 0,
+								visible: false
+							})
+						} else {
+							element.set({
+								top: 0,
+								left: 0,
+								width: 0,
+								height: 0,
+								visible: false
+							})
+						}
+					}
+				}
+			}
+		})
+
+		// Tell canvas to re-render all objects.
+		this._canvas.renderAll()
 	}
 
 	/**
@@ -760,14 +829,15 @@ export class TimelineVisualizer {
 	/**
 	 * Calculate position of object instance from top of timeline according to its layer.
 	 * @param {string} parentID Name of object to which this instance belongs.
+	 * @param {number} timelineIndex Index of timeline being drawn.
 	 * @returns Position relative to top of canvas in pixels.
 	 */
-	getObjectOffsetFromTop (parentID: string): number {
+	getObjectOffsetFromTop (parentID: string, timelineIndex: number): number {
 		let top = 0
 
 		// Iterate through layers and find the one that contains this object's parent.
-		for (let key in this._resolvedTimeline.layers) {
-			if (this._resolvedTimeline.layers[key].indexOf(parentID) !== -1) {
+		for (let key in this._resolvedTimelines[timelineIndex].layers) {
+			if (this._resolvedTimelines[timelineIndex].layers[key].indexOf(parentID) !== -1) {
 				// Calculate offset.
 				top = top * this._rowHeight
 				break
