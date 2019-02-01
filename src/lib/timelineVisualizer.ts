@@ -100,6 +100,14 @@ class ViewPort {
 	playheadTime: number
 }
 
+/**
+ * Stores the times to trim a timeline between.
+ */
+class TrimProperties {
+	start?: number
+	end?: number
+}
+
 export class TimelineVisualizer {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
@@ -329,13 +337,25 @@ export class TimelineVisualizer {
 				this.hideTimelineFabricObjects(currentState)
 			}
 
-			// Store the objects to draw.
-			this._resolvedTimelines.push(resolvedTimeline)
+			// If we're using the playhead, trim the timeline.
+			if (DRAW_PLAYHEAD) {
+				resolvedTimeline = this.trimTimeline(resolvedTimeline, { start: this._playHeadTime })
 
-			// Create new fabric objects for new objects in timeline.
-			this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
+				this._resolvedTimelines[this._currentTimeline - 1] = this.trimTimeline(this._resolvedTimelines[this._currentTimeline - 1], { end: this._playHeadTime })
 
-			this._currentTimeline++
+				// Store the objects to draw.
+				this._resolvedTimelines.push(resolvedTimeline)
+
+				// Create new fabric objects for new objects in timeline.
+				this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
+
+				this._currentTimeline++
+			} else {
+				// Otherwise we only see one timeline at a time.
+
+				// Create new fabric objects for new objects in timeline.
+				this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
+			}
 
 			// Draw timeline.
 			this.redrawTimeline()
@@ -1135,5 +1155,80 @@ export class TimelineVisualizer {
 
 		// (Proportion of time * timeline width) + layer label width
 		return ((time - this._drawTimeStart) / (this._drawTimeEnd - this._drawTimeStart) * this._timelineWidth) + this._timelineStart
+	}
+
+	/**
+	 * Trims a timeline so that objects only exist within a specified time period.
+	 * @param timeline Timeline to trim.
+	 * @param trim Times to trim between.
+	 */
+	trimTimeline (timeline: ResolvedTimeline, trim: TrimProperties): ResolvedTimeline {
+		// The new resolved objects.
+		let newObjects = {}
+
+		// Iterate through resolved objects.
+		Object.keys(timeline.objects).forEach(obj => {
+			Object.keys(timeline.objects[obj].resolved.instances).forEach(instance => {
+				// Whether to insert this object into the new timeline.
+				let insert = true
+
+				let newInstance = timeline.objects[obj].resolved.instances[instance] as TimelineObjectInstance
+
+				// If trimming the start time.
+				if (trim.start) {
+					// If the object doesn't end before the new start time.
+					if (timeline.objects[obj].resolved.instances[instance].end > (trim.start as number)) {
+						if (newInstance.start < trim.start) {
+							newInstance.start = trim.start as number
+						}
+					} else {
+						insert = false
+					}
+				}
+
+				// If trimming the end time.
+				if (trim.end) {
+					// If the object doesn't start after the new end time.
+					if (timeline.objects[obj].resolved.instances[instance].start < (trim.end as number)) {
+						if ((newInstance.end as number) > trim.end) {
+							newInstance.end = trim.end as number
+						}
+					} else {
+						insert = false
+					}
+				}
+
+				if (insert) {
+					// If there isn't a resolved object for the new instance, create it.
+					if (Object.keys(newObjects).indexOf(obj) === -1) {
+						let newObject: ResolvedTimelineObject = {
+							content: timeline.objects[obj].content,
+							enable: timeline.objects[obj].content,
+							id: timeline.objects[obj].id,
+							layer: timeline.objects[obj].layer,
+							resolved: {
+								instances: [
+									newInstance
+								],
+								levelDeep: timeline.objects[obj].resolved.levelDeep,
+								resolved: timeline.objects[obj].resolved.resolved,
+								resolving: timeline.objects[obj].resolved.resolving
+							}
+						}
+						newObjects[obj] = newObject
+					} else {
+						newObjects[obj].resolved.instances[instance].push(newInstance)
+					}
+				}
+			})
+		})
+
+		return {
+			classes: timeline.classes,
+			layers: timeline.layers,
+			objects: newObjects,
+			options: timeline.options,
+			statistics: timeline.statistics
+		}
 	}
 }
