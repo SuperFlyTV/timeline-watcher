@@ -728,6 +728,8 @@ export class TimelineVisualizer {
 	 * @param {string} parentName Name of the object's parent (the object the instance belongs to).
 	 */
 	createFabricObject (name: string) {
+		let displayName = name.split(':')[1]
+
 		let resolvedObjectRect = new fabric.Rect({
 			left: 0,
 			width: 0,
@@ -741,7 +743,7 @@ export class TimelineVisualizer {
 			name: name
 		})
 
-		let resolvedObjectLabel = new fabric.Text(name, { // TODO trim debug info (NO:THIS:NO)
+		let resolvedObjectLabel = new fabric.Text(displayName, {
 			fontFamily: TEXT_FONT_FAMILY,
 			fontSize: TEXT_FONT_SIZE,
 			textAlign: 'center',
