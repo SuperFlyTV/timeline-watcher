@@ -68,10 +68,6 @@ const TIMELINE_OBJECT_HEIGHT = 2 / 3
 
 /** END STYLING VALUES */
 
-class ResolvedLayers {
-	[layer: string]: Array<string>
-}
-
 class TimelineDrawState {
 	[id: string]: DrawState
 }
@@ -120,6 +116,8 @@ export class TimelineVisualizer {
 	// Timelines currently drawn.
 	private _resolvedTimelines: ResolvedTimeline[]
 	private _currentTimeline: number
+	// Layers on timeline.
+	private _layerLabels: string[]
 
 	// Width of column of layer labels.
 	private _layerLabelWidth: number
@@ -171,6 +169,9 @@ export class TimelineVisualizer {
 	// List of fabric objects created.
 	private _fabricObjects: string[]
 
+	// List of fabric objects created for layers.
+	private _layerFabricObjects: string[]
+
 	// Whether or not the playhead should move.
 	private _playHeadPlaying: boolean
 
@@ -200,6 +201,7 @@ export class TimelineVisualizer {
 		this._playHeadTime = 0
 		this._resolvedTimelines = []
 		this._currentTimeline = 0
+		this._layerFabricObjects = []
 
 		this._canvasId = canvasId
 
@@ -287,9 +289,11 @@ export class TimelineVisualizer {
 		// Resolve timeline.
 		this._resolvedTimelines.push(Resolver.resolveTimeline(timeline, options))
 
+		// Get layers to draw.
+		this._layerLabels = this.getLayersToDraw()
+
 		// Calculate height of rows based on number of layers.
-		// In future layers will be pulled from the timeline.
-		this._rowHeight = this.calculateRowHeight(this._resolvedTimelines[this._currentTimeline].layers)
+		this._rowHeight = this.calculateRowHeight(this._layerLabels)
 
 		// Draw the layer labels.
 		this.drawLayerLabels()
@@ -329,8 +333,6 @@ export class TimelineVisualizer {
 
 		// If the timeline contains any objects, draw.
 		if (Object.keys(resolvedTimeline.objects).length > 0) {
-			// TODO trim timelines
-
 			for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
 				let currentState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
 
@@ -346,12 +348,25 @@ export class TimelineVisualizer {
 				// Store the objects to draw.
 				this._resolvedTimelines.push(resolvedTimeline)
 
+				let newLayers = this.getLayersToDraw()
+
+				if (newLayers.length !== this._layerLabels.length) {
+					this.drawLayerLabels()
+				}
+
 				// Create new fabric objects for new objects in timeline.
 				this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
 
 				this._currentTimeline++
 			} else {
 				// Otherwise we only see one timeline at a time.
+				this._resolvedTimelines[this._currentTimeline] = resolvedTimeline
+
+				let newLayers = this.getLayersToDraw()
+
+				if (newLayers.length !== this._layerLabels.length) {
+					this.drawLayerLabels()
+				}
 
 				// Create new fabric objects for new objects in timeline.
 				this.createTimelineFabricObjects(resolvedTimeline.objects, this._currentTimeline)
@@ -418,11 +433,11 @@ export class TimelineVisualizer {
 
 	/**
 	 * Calculates the height to give to each row to fit all layers on screen.
-	 * @param {ResolvedLayers} layers Map of layers to use.
+	 * @param {String[]} layers Map of layers to use.
 	 * @returns Height of rows.
 	 */
-	calculateRowHeight (layers: ResolvedLayers): number {
-		return this._canvasHeight / Object.keys(layers).length
+	calculateRowHeight (layers: String[]): number {
+		return this._canvasHeight / layers.length
 	}
 
 	/**
@@ -430,66 +445,106 @@ export class TimelineVisualizer {
 	 */
 	drawLayerLabels () {
 		// Store layers to draw.
-		// TODO get this from all resolved timelines
-		let layers = Object.keys(this._resolvedTimelines[0].layers)
+		this._layerLabels = this.getLayersToDraw()
+
+		// Calculate row height.
+		this._rowHeight = this.calculateRowHeight(this._layerLabels)
 
 		// Iterate through layers.
-		for (let _i = 0; _i < layers.length; _i++) {
-			// Create a background rectangle.
-			let layerRect = new fabric.Rect({
-				left: 0,
-				top: _i * this._rowHeight,
-				fill: COLOR_LABEL_BACKGROUND,
-				width: this._layerLabelWidth,
-				height: this._rowHeight,
-				selectable: false,
-				name: layers[_i]
-			})
-
-			// Create label.
-			let layerText = new fabric.Text(layers[_i], {
-				width: this._layerLabelWidth,
-				fontFamily: TEXT_FONT_FAMILY,
-				fontSize: TEXT_FONT_SIZE,
-				textAlign: 'left',
-				fill: TEXT_COLOR,
-				selectable: false,
-				top: (_i * this._rowHeight) + (this._rowHeight / 2),
-				name: layers[_i]
-			})
-
-			// If this is the topmost label, draw to screen.
-			// Otherwise, add a line between rows.
-			if (_i === 0) {
-				// Group background and label.
-				let layerGroup = new fabric.Group([layerRect, layerText], {
-					selectable: false
-				})
-
-				// Draw.
-				this._canvas.add(layerGroup)
-				// this.timeLineObjects.layerLabels[layerText.text as string].push(layerGroup)
-			} else {
-				// Create line.
-				let layerLine = new fabric.Rect({
-					left: this._layerLabelWidth,
+		for (let _i = 0; _i < this._layerLabels.length; _i++) {
+			if (this._layerFabricObjects.indexOf(this._layerLabels[_i]) === -1) {
+				// Create a background rectangle.
+				let layerRect = new fabric.Rect({
+					left: 0,
 					top: _i * this._rowHeight,
-					fill: COLOR_LINE,
-					width: this._timelineWidth,
-					height: THICKNESS_LINE,
+					fill: COLOR_LABEL_BACKGROUND,
+					width: this._layerLabelWidth,
+					height: this._rowHeight,
 					selectable: false,
-					name: 'Line'
+					name: 'Layer:Rect:' + this._layerLabels[_i]
 				})
 
-				// Group background, label, and line.
-				let layerGroup = new fabric.Group([layerRect, layerText, layerLine], {
-					selectable: false
+				// Create label.
+				let layerText = new fabric.Text(this._layerLabels[_i], {
+					width: this._layerLabelWidth,
+					fontFamily: TEXT_FONT_FAMILY,
+					fontSize: TEXT_FONT_SIZE,
+					textAlign: 'left',
+					fill: TEXT_COLOR,
+					selectable: false,
+					top: (_i * this._rowHeight) + (this._rowHeight / 2),
+					name: 'Layer:Text:' + this._layerLabels[_i]
 				})
 
-				// Draw.
-				this._canvas.add(layerGroup)
+				// If this is the topmost label, draw to screen.
+				// Otherwise, add a line between rows.
+				if (_i === 0) {
+					// Draw.
+					this._canvas.add(layerRect)
+					this._canvas.add(layerText)
+				} else {
+					// Create line.
+					let layerLine = new fabric.Rect({
+						left: this._layerLabelWidth,
+						top: _i * this._rowHeight,
+						fill: COLOR_LINE,
+						width: this._timelineWidth,
+						height: THICKNESS_LINE,
+						selectable: false,
+						name: 'Layer:Line:' + this._layerLabels[_i]
+					})
+
+					// Draw.
+					this._canvas.add(layerRect)
+					this._canvas.add(layerText)
+					this._canvas.add(layerLine)
+				}
+
+				this._layerFabricObjects.push(this._layerLabels[_i])
 			}
 		}
+
+		this._canvas.getObjects().forEach(element => {
+			if (element.name !== undefined) {
+				let name = (element.name as string).split(':')
+
+				if (name[0] === 'Layer') {
+					let offset = this._layerLabels.indexOf(name[2])
+
+					if (name[1] === 'Rect') {
+						element.set({
+							top: offset * this._rowHeight,
+							height: this._rowHeight,
+						})
+					} else if (name[1] === 'Text') {
+						element.set({
+							top: (offset * this._rowHeight) + (this._rowHeight / 2),
+						})
+					} else if (name[1] === 'Line') {
+						element.set({
+							top: offset * this._rowHeight,
+						})
+					}
+				}
+			}
+		})
+
+		this._canvas.renderAll()
+	}
+
+	getLayersToDraw (): string[] {
+		let ret: string[] = []
+
+		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
+			for (let _j = 0; _j < Object.keys(this._resolvedTimelines[_i].layers).length; _j++) {
+				let layer = Object.keys(this._resolvedTimelines[_i].layers)[_j]
+				if (ret.indexOf(layer) === -1) {
+					ret.push(layer)
+				}
+			}
+		}
+
+		return ret
 	}
 
 	/**
@@ -633,7 +688,7 @@ export class TimelineVisualizer {
 				let instanceObj = timeObj.resolved.instances[_i]
 				let name = timelineIndex.toString() + ':' + parentID + ':' + (instanceObj.id as string)
 
-				currentDrawState[name] = this.createStateForObject(parentID, instanceObj.start as number, instanceObj.end as number, timelineIndex)
+				currentDrawState[name] = this.createStateForObject(timeObj.layer as string, instanceObj.start as number, instanceObj.end as number)
 			}
 		}
 
@@ -642,20 +697,19 @@ export class TimelineVisualizer {
 
 	/**
 	 * Creates a draw state for a timeline object.
-	 * @param {string} parentID Name of the object's parent.
+	 * @param {string} layer Object's layer.
 	 * @param {number} start Start time.
 	 * @param {number} end End time.
-	 * @param {number} timelineIndex Index of timeline being drawn.
 	 * @returns {DrawState} State of the object to draw.
 	 */
-	createStateForObject (parentID: string, start: number, end: number, timelineIndex: number): DrawState {
+	createStateForObject (layer: string, start: number, end: number): DrawState {
 		// Default state (hidden).
 		let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
 		// State should be default if the object is not being shown.
 		if (this.showOnTimeline(start, end)) {
 			// Get object dimensions and position.
 			let objectWidth = this.getObjectWidth(start, end)
-			let objectTop = this.getObjectOffsetFromTop(parentID, timelineIndex)
+			let objectTop = this.getObjectOffsetFromTop(layer)
 
 			// Set state properties.
 			state.height = this._timelineObjectHeight
@@ -687,7 +741,7 @@ export class TimelineVisualizer {
 			name: name
 		})
 
-		let resolvedObjectLabel = new fabric.Text(name, {
+		let resolvedObjectLabel = new fabric.Text(name, { // TODO trim debug info (NO:THIS:NO)
 			fontFamily: TEXT_FONT_FAMILY,
 			fontSize: TEXT_FONT_SIZE,
 			textAlign: 'center',
@@ -848,25 +902,13 @@ export class TimelineVisualizer {
 
 	/**
 	 * Calculate position of object instance from top of timeline according to its layer.
-	 * @param {string} parentID Name of object to which this instance belongs.
-	 * @param {number} timelineIndex Index of timeline being drawn.
+	 * @param {string} layer Object's layer.
 	 * @returns Position relative to top of canvas in pixels.
 	 */
-	getObjectOffsetFromTop (parentID: string, timelineIndex: number): number {
-		let top = 0
+	getObjectOffsetFromTop (layer: string): number {
+		let top = this._layerLabels.indexOf(layer)
 
-		// Iterate through layers and find the one that contains this object's parent.
-		for (let key in this._resolvedTimelines[timelineIndex].layers) {
-			if (this._resolvedTimelines[timelineIndex].layers[key].indexOf(parentID) !== -1) {
-				// Calculate offset.
-				top = top * this._rowHeight
-				break
-			} else {
-				top++
-			}
-		}
-
-		return top
+		return top * this._rowHeight
 	}
 
 	/**
