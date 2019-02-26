@@ -1261,7 +1261,7 @@ export class TimelineVisualizer {
 						}
 						newObjects[obj] = newObject
 					} else {
-						newObjects[obj].resolved.instances[instance].push(newInstance)
+						newObjects[obj].resolved.instances.push(newInstance)
 					}
 				}
 			})
