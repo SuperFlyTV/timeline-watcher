@@ -344,6 +344,11 @@ export class TimelineVisualizer {
 				resolvedTimeline = this.trimTimeline(resolvedTimeline, { start: this._playHeadTime })
 
 				this._resolvedTimelines[this._currentTimeline - 1] = this.trimTimeline(this._resolvedTimelines[this._currentTimeline - 1], { end: this._playHeadTime })
+				
+				// Merge the timelines.
+				let merged_timelines = this.mergeTimelineObjects(this._resolvedTimelines[this._currentTimeline - 1], resolvedTimeline)
+				this._resolvedTimelines[this._currentTimeline - 1] = merged_timelines[0]
+				resolvedTimeline = merged_timelines[1]
 
 				// Store the objects to draw.
 				this._resolvedTimelines.push(resolvedTimeline)
@@ -1274,5 +1279,33 @@ export class TimelineVisualizer {
 			options: timeline.options,
 			statistics: timeline.statistics
 		}
+	}
+
+	/**
+	 * Merges two timelines by merging instances of objects that intersect each other.
+	 * @param past Older timeline.
+	 * @param present Newer timeline.
+	 * @returns {ResolvedTimeline[2]} [past, present] containing altered values.
+	 */
+	mergeTimelineObjects(past: ResolvedTimeline, present: ResolvedTimeline) {
+		// Iterate over objects in the first timeline.
+		Object.keys(past.objects).forEach(obj => {
+			// If an object exists in both timelines,
+			if (obj in present.objects) {
+				// Iterate over all instances of those objects.
+				past.objects[obj].resolved.instances.forEach(instance => {
+					present.objects[obj].resolved.instances.forEach(inst => {
+						// If the instances are next to each other, merge them.
+						if (instance.end == inst.start) {
+							inst.start = instance.start
+							
+							// Remove the older instance.
+							past.objects[obj].resolved.instances.splice(past.objects[obj].resolved.instances.indexOf(inst), 1)
+						}
+					})
+				})
+			}
+		})
+		return [past, present]
 	}
 }
