@@ -5,11 +5,13 @@
     <body>
         <canvas width="1280" height="720" id="timeline"></canvas>
 
-        <script src="bundle.js"></script>
+        <script src="../dist/js/timeline-visualizer.js"></script>
 
         <script>
         
-        var visuals = new TimelineVisualizer.TimelineVisualizer('timeline')
+        var visuals = new TimelineVisualizer.TimelineVisualizer('timeline', {
+			drawPlayhead: true,
+		})
 
         var timeline = [
 			{
@@ -47,7 +49,16 @@
 					end: '#video0.end + 400'
 				},
 				content: {}
-			}
+			},
+			{
+					id: 'video3',
+					layer: '3',
+					enable: {
+						start: '0',
+						// end: '#video2.end + 600'
+					},
+					content: {}
+				}
 		]
 
         var options = {
@@ -57,50 +68,72 @@
 		visuals.setTimeline(timeline, options)
 
 		visuals.setViewPort({
-			playing: false,
-			playheadTime: 220
+			playPlayhead: true,
+			// playheadTime: 220,
+			zoom: 5*1000,
+			playSpeed: 1000,
+
+			playViewPort: false,
+
+			playheadTime: 10*1000,
+
+			timestamp: 0*1000
+
 		})
 
-		var timelineAdded = [
-			{
-				id: 'video2',
-				layer: '0',
-				enable: {
-					start: 0,
-					end: 100
-				},
-				content: {}
-			},
-			{
-				id: 'graphic2',
-				layer: '1',
-				enable: {
-					start: '#video2.start + 10',
-					duration: 10
-				},
-				content: {}
-			},
-			{
-				id: 'graphic3',
-				layer: '1',
-				enable: {
-					start: '#graphic2.end + 10',
-					duration: 15
-				},
-				content: {}
-			},
-			{
-				id: 'video3',
-				layer: '3',
-				enable: {
-					start: '#video2.end + 300',
-					end: '#video2.end + 600'
-				},
-				content: {}
-			}
-		]
+		setTimeout(() => {
 
-		visuals.updateTimeline(timelineAdded)
+			
+			var timelineAdded = [
+				{
+					id: 'video2',
+					layer: '0',
+					enable: {
+						start: 0,
+						end: 100
+					},
+					content: {}
+				},
+				{
+					id: 'graphic2',
+					layer: '1',
+					enable: {
+						start: '#video2.start + 10',
+						duration: 10
+					},
+					content: {}
+				},
+				{
+					id: 'graphic3',
+					layer: '1',
+					enable: {
+						start: '#graphic2.end + 10',
+						duration: 15
+					},
+					content: {}
+				},
+				{
+					id: 'video3',
+					layer: '3',
+					enable: {
+						start: '300',
+						// end: '#video2.end + 600'
+					},
+					content: {}
+				},
+				{
+					id: 'video4',
+					layer: '4',
+					enable: {
+						start: '300',
+						// end: '#video2.end + 600'
+					},
+					content: {}
+				}
+			]
+
+			visuals.updateTimeline(timelineAdded)
+		}, 1000)
         
         </script>
     </body>
