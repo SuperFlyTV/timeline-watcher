@@ -102,6 +102,25 @@ export interface TrimProperties {
 	end?: number
 }
 
+/**
+ * Stores the object currently being hovered over.
+ */
+export interface HoveredObject {
+	object: TimelineObject,
+	instance: TimelineObjectInstance,
+	pointer: { xPostion: number, yPosition: number }
+}
+
+/**
+ * Used when splitting up the name of a timeline object to separate out the data stored within the name.
+ */
+export interface TimelineObjectMetaData {
+	type: string
+	timelineIndex: number
+	name: string
+	instance: string
+}
+
 export class TimelineVisualizer {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
@@ -184,8 +203,11 @@ export class TimelineVisualizer {
 	// The playhead position in canvas coordinates.
 	private _playHeadPosition: number
 
-	// The last time updateDraw() did a draw
+	// The last time updateDraw() did a draw.
 	private _updateDrawLastTime: number = 0
+
+	// The object currently being hovered over.
+	private _hoveredOver: HoveredObject | undefined
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -215,7 +237,8 @@ export class TimelineVisualizer {
 			fill: COLOR_BACKGROUND,
 			width: this._canvasWidth,
 			height: this._canvasHeight,
-			selectable: false
+			selectable: false,
+			name: 'background'
 		})
 		this._canvas.add(background)
 
@@ -265,6 +288,8 @@ export class TimelineVisualizer {
 		this._canvas.on('mouse:up', event => this.canvasMouseUp(event))
 		this._canvas.on('mouse:move', event => this.canvasMouseMove(event))
 		this._canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
+		this._canvas.on('mouse:over', event => this.canvasObjectHover(event, true))
+		this._canvas.on('mouse:out', event => this.canvasObjectHover(event, false))
 
 		// Get width and height of canvas.
 		this._canvasWidth = this._canvas.getWidth()
@@ -437,6 +462,13 @@ export class TimelineVisualizer {
 
 			this.redrawTimeline()
 		}
+	}
+
+	/**
+	 * Accessor for polling the currently hovered over object.
+	 */
+	getHoveredObject() {
+		return this._hoveredOver
 	}
 
 	/**
@@ -688,6 +720,8 @@ export class TimelineVisualizer {
 								visible: state.visible
 								// visible: ((element.width as number) <= state.width) ? state.visible : false // Only show if text fits within timeline object.
 							})
+							element.setCoords()
+							element.moveTo(101)
 						} else {
 							element.set({
 								height: state.height,
@@ -696,6 +730,8 @@ export class TimelineVisualizer {
 								width: Math.max(1,state.width), // allways let it be at least one pixel wide
 								visible: state.visible
 							})
+							element.setCoords()
+							element.moveTo(100)
 						}
 					}
 				}
@@ -716,12 +752,12 @@ export class TimelineVisualizer {
 		let currentDrawState: TimelineDrawState = {}
 
 		for (let key in timeline.objects) {
-			let timeObj = timeline.objects[key] as ResolvedTimelineObject
+			let timeObj = timeline.objects[key]
 			let parentID = timeObj.id
 
 			for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
 				let instanceObj = timeObj.resolved.instances[_i]
-				let name = timelineIndex.toString() + ':' + parentID + ':' + instanceObj.id
+				let name = 'timelineObject:' + timelineIndex.toString() + ':' + parentID + ':' + instanceObj.id
 
 				currentDrawState[name] = this.createStateForObject(
 					timeObj.layer + '',
@@ -767,7 +803,7 @@ export class TimelineVisualizer {
 	 * @param {string} parentName Name of the object's parent (the object the instance belongs to).
 	 */
 	createFabricObject (name: string) {
-		let displayName = name.split(':')[1]
+		let displayName = name.split(':')[2]
 
 		let resolvedObjectRect = new fabric.Rect({
 			left: 0,
@@ -813,7 +849,7 @@ export class TimelineVisualizer {
 
 			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
 				// Create name.
-				let name = timelineIndex.toString() + ':' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
+				let name = 'timelineObject:' + timelineIndex.toString() + ':' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
 
 				// If the object doesn't already have fabric objects, create new ones.
 				if (this._fabricObjects.indexOf(name) === -1) {
@@ -1184,6 +1220,48 @@ export class TimelineVisualizer {
 	}
 
 	/**
+	 * Called when a canvas object is hovered over.
+	 * @param {fabric.IEvent} event Hover event.
+	 * @param {boolean} over Whether the cursor has moved over an object or out of an object.
+	 */
+	canvasObjectHover (event: fabric.IEvent, over: boolean) {
+		if (over) {
+			if (event.target !== undefined) {
+				if (event.target.name !== undefined) {
+					// Get object metadata from the object name of the hovered object.
+					let meta = this.timelineMetaFromString(event.target.name)
+
+					// If we are hovering over a timeline object.
+					if (meta !== undefined && meta.type === 'timelineObject') {
+						// Get the timeline object and the instance being hovered over.
+						let timelineObject = this._resolvedTimelines[meta.timelineIndex].objects[meta.name]
+						let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
+
+						// Get the position of the cursor relative to the canvas.
+						let cursorPostion = this._canvas.getPointer(event.e)
+
+						// Construct hover info.
+						let hoverInfo: HoveredObject = {
+							object: timelineObject,
+							instance: instance,
+							pointer: { xPostion: cursorPostion.x, yPosition: cursorPostion.y }
+						}
+
+						this._hoveredOver = hoverInfo
+					}
+				}
+			}
+		} else {
+			this._hoveredOver = undefined
+		}
+
+		// Send a DOM event.
+		dispatchEvent(new CustomEvent('timeline:hover', {
+			detail: this._hoveredOver
+		}))
+	}
+
+	/**
 	 * Calculates the new scaled timeline start and end times according to the current zoom value.
 	 */
 	updateScaledDrawTimeRange () {
@@ -1393,5 +1471,25 @@ export class TimelineVisualizer {
 			}
 		})
 		return { past, present }
+	}
+
+	/**
+	 * Gets metadata for a timeline object from a string representation.
+	 * @param {string} meta Metadata string.
+	 * @returns {TimelineObjectMetaData | undefined} Extracted metadata or undefined if the string does not contain the required values.
+	 */
+	timelineMetaFromString (meta: string): TimelineObjectMetaData | undefined {
+		let metaArray = meta.split(':')
+
+		if (metaArray.length === 4) {
+			return {
+				type: metaArray[0],
+				timelineIndex: parseInt(metaArray[1], 10),
+				name: metaArray[2],
+				instance: metaArray[3]
+			}
+		}
+
+		return
 	}
 }
