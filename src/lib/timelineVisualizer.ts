@@ -2,6 +2,7 @@ import { fabric } from 'fabric'
 import * as isEqual from 'lodash.isequal'
 
 import { Resolver, TimelineObject, ResolveOptions, ResolvedTimeline, ResolvedTimelineObjects, TimelineObjectInstance, ResolvedTimelineObject } from 'superfly-timeline'
+import { EventEmitter } from 'events';
 
 /** Step size/ time step. */
 const DEFAULT_STEP_SIZE = 1
@@ -121,7 +122,7 @@ export interface TimelineObjectMetaData {
 	instance: string
 }
 
-export class TimelineVisualizer {
+export class TimelineVisualizer extends EventEmitter {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
 
@@ -213,6 +214,8 @@ export class TimelineVisualizer {
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
 	constructor (canvasId: string, options: TimelineVisualizerOptions = {}) {
+		super()
+
 		// Initialise other values.
 		this._canvasId = canvasId
 
@@ -1255,10 +1258,7 @@ export class TimelineVisualizer {
 			this._hoveredOver = undefined
 		}
 
-		// Send a DOM event.
-		dispatchEvent(new CustomEvent('timeline:hover', {
-			detail: this._hoveredOver
-		}))
+		this.emit('timeline:hover', { detail: this._hoveredOver })
 	}
 
 	/**
