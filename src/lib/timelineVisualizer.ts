@@ -1229,8 +1229,8 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	canvasObjectHover (event: fabric.IEvent, over: boolean) {
 		if (over) {
-			if (event.target !== undefined) {
-				if (event.target.name !== undefined) {
+			if (event.target) {
+				if (event.target.name) {
 					// Get object metadata from the object name of the hovered object.
 					let meta = this.timelineMetaFromString(event.target.name)
 
