@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "info": "npm-scripts-info",
-    "build": "trash dist && yarn build:main && yarn bundle:minify",
+    "build": "trash dist && yarn build:main && yarn bundle:minify && yarn bundle:bundle",
     "build:dev": "yarn build:main && yarn bundle:bundle",
     "buildstart": "yarn build && yarn start",
     "buildinspect": "yarn build && yarn inspect",
