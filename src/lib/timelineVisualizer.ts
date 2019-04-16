@@ -277,7 +277,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	initCanvas () {
 		// Create new canvas object.
-		this._canvas = new fabric.Canvas(this._canvasId)
+		this._canvas = new fabric.Canvas(this._canvasId, {renderOnAddRemove: false})
 
 		if (!this._canvas) throw new Error(`Canvas "${this._canvasId}" not found`)
 
@@ -511,7 +511,8 @@ export class TimelineVisualizer extends EventEmitter {
 						width: this._layerLabelWidth,
 						height: this._rowHeight,
 						selectable: false,
-						name: 'Layer:Rect:' + o.layersArray[_i]
+						name: 'Layer:Rect:' + o.layersArray[_i],
+						objectCaching: false
 					})
 
 					// Create label.
@@ -523,7 +524,8 @@ export class TimelineVisualizer extends EventEmitter {
 						fill: TEXT_COLOR,
 						selectable: false,
 						top: (_i * this._rowHeight) + (this._rowHeight / 2),
-						name: 'Layer:Text:' + o.layersArray[_i]
+						name: 'Layer:Text:' + o.layersArray[_i],
+						objectCaching: false
 					})
 
 					// If this is the topmost label, draw to screen.
@@ -653,19 +655,14 @@ export class TimelineVisualizer extends EventEmitter {
 
 		let timeLineState: TimelineDrawState = {}
 		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
-			let ts = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
-			Object.keys(ts).forEach(id => {
-				timeLineState[id] = ts[id]
-			})
+			timeLineState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
 		}
-		// Draw the current state.
-		this.drawTimelineState(timeLineState)
 
 		// Find new playhead position.
 		this.computePlayheadPosition()
 
-		// Redraw the playhead.
-		this.redrawPlayHead()
+		// Draw the current state.
+		this.drawTimelineState(timeLineState)
 	}
 
 	/**
@@ -674,28 +671,35 @@ export class TimelineVisualizer extends EventEmitter {
 	redrawPlayHead () {
 		// Check playhead should be drawn.
 		if (this._drawPlayhead) {
-			let left = this._playHeadPosition
-			let height = this._canvasHeight
-			let width = THICKNESS_PLAYHEAD
-
-			if (left === -1) {
-				left = 0
-				height = 0
-				width = 0
-			}
-
 			this._canvas.getObjects().forEach(element => {
 				if (element.name === NAME_PLAYHEAD) {
 					// Move playhead and bring to front.
-					element.set({
-						left: left,
-						height: height,
-						width: width
-					})
+					element.set(this.getPlayheadFabricOptions())
 					element.bringToFront()
 				}
 			})
 			this._canvas.renderAll()
+		}
+	}
+
+	/**
+	 * Computes the properties of the playhed fabric object at the current time.
+	 */
+	getPlayheadFabricOptions () {
+		let left = this._playHeadPosition
+		let height = this._canvasHeight
+		let width = THICKNESS_PLAYHEAD
+
+		if (left === -1) {
+			left = 0
+			height = 0
+			width = 0
+		}
+
+		return {
+			left: left,
+			height: height,
+			width: width
 		}
 	}
 
@@ -735,6 +739,10 @@ export class TimelineVisualizer extends EventEmitter {
 							})
 							element.setCoords()
 							element.moveTo(100)
+						}
+					} else if (element.name === NAME_PLAYHEAD) {
+						if (this._drawPlayhead) {
+							element.set(this.getPlayheadFabricOptions())
 						}
 					}
 				}
@@ -818,7 +826,8 @@ export class TimelineVisualizer extends EventEmitter {
 			strokeWidth: THICKNESS_TIMELINE_OBJECT_BORDER,
 			selectable: false,
 			visible: false,
-			name: name
+			name: name,
+			objectCaching: false
 		})
 
 		let resolvedObjectLabel = new fabric.Text(displayName, {
@@ -830,7 +839,8 @@ export class TimelineVisualizer extends EventEmitter {
 			top: 0,
 			left: 0,
 			visible: false,
-			name: name
+			name: name,
+			objectCaching: false
 		})
 
 		this._canvas.add(resolvedObjectRect)
