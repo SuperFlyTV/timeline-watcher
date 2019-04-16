@@ -1,5 +1,6 @@
 import { fabric } from 'fabric'
 import * as isEqual from 'lodash.isequal'
+import * as merge from 'lodash.merge'
 
 import { Resolver, TimelineObject, ResolveOptions, ResolvedTimeline, ResolvedTimelineObjects, TimelineObjectInstance, ResolvedTimelineObject } from 'superfly-timeline'
 import { EventEmitter } from 'events';
@@ -132,7 +133,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
 	// Timelines currently drawn.
-	private _resolvedTimelines: ResolvedTimeline[] = []
+	private _resolvedTimeline: ResolvedTimeline
 	// Layers on timeline.
 	private _layerLabels: Layers = {}
 
@@ -313,17 +314,14 @@ export class TimelineVisualizer extends EventEmitter {
 			}
 		}
 
-		if (this._resolvedTimelines.length === 0) {
+		if (this._resolvedTimeline === undefined) {
 			// Resolve timeline.
-			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
-
-			// Save the resolved timeline:
-			this._resolvedTimelines = [resolvedTimeline]
+			this._resolvedTimeline = Resolver.resolveTimeline(timeline, options)
 
 			// Draw the layer labels.
 			this.drawLayerLabels()
 
-			this.drawInitialTimeline(resolvedTimeline, options)
+			this.drawInitialTimeline(this._resolvedTimeline, options)
 		} else {
 			// If the playhead is being drawn, the resolve time should be at the playhead time.
 			if (this._drawPlayhead) {
@@ -331,51 +329,34 @@ export class TimelineVisualizer extends EventEmitter {
 			}
 
 			// Resolve the timeline.
-			let resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+			let newTimeline = Resolver.resolveTimeline(timeline, options)
 
-			for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
-				let currentState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
-
-				this.hideTimelineFabricObjects(currentState)
-			}
+			this.hideTimelineFabricObjects(this.getTimelineDrawState(this._resolvedTimeline, 0))
 
 			// If we're using the playhead, trim the timeline.
 			if (this._drawPlayhead) {
-				resolvedTimeline = this.trimTimeline(resolvedTimeline, { start: this._playHeadTime })
+				newTimeline = this.trimTimeline(newTimeline, { start: this._playHeadTime })
 
-				let currentTimeline = this._resolvedTimelines[this._resolvedTimelines.length - 1]
 				// Trim the current timeline:
-				if (currentTimeline) {
-					currentTimeline = this.trimTimeline(
-						currentTimeline,
+				if (newTimeline) {
+					this._resolvedTimeline = this.trimTimeline(
+						this._resolvedTimeline,
 						{ end: this._playHeadTime }
 					)
 
 					// Merge the timelines.
-					let mergedTimelines = this.mergeTimelineObjects(currentTimeline, resolvedTimeline)
-
-					// save the updated timeline to
-					this._resolvedTimelines[this._resolvedTimelines.length - 1] = mergedTimelines.past
-					resolvedTimeline = mergedTimelines.present
-
+					this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, newTimeline)
 				}
 
-				// Store the resolved timeline at a new spot:
-				this._resolvedTimelines.push(resolvedTimeline)
-
-				// let newLayers = this.getLayersToDraw()
-
-				// if (newLayers.length !== this._layerLabels.length) {
-				// }
 				this.drawLayerLabels()
 
 				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
+				this.createTimelineFabricObjects(this._resolvedTimeline.objects, 0)
 			} else {
 				// Otherwise we only see one timeline at a time.
 
 				// Overwrite the previous timeline:
-				this._resolvedTimelines[this._resolvedTimelines.length - 1] = resolvedTimeline
+				this._resolvedTimeline = newTimeline
 
 				// let newLayers = this.getLayersToDraw()
 
@@ -384,7 +365,7 @@ export class TimelineVisualizer extends EventEmitter {
 				this.drawLayerLabels()
 
 				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
+				this.createTimelineFabricObjects(this._resolvedTimeline.objects, 0)
 			}
 
 			// Draw timeline.
@@ -572,13 +553,11 @@ export class TimelineVisualizer extends EventEmitter {
 	getLayersToDraw () {
 		let layersArray: string[] = []
 
-		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
-			for (let _j = 0; _j < Object.keys(this._resolvedTimelines[_i].layers).length; _j++) {
-				let layer: string = Object.keys(this._resolvedTimelines[_i].layers)[_j]
+		for (let _j = 0; _j < Object.keys(this._resolvedTimeline.layers).length; _j++) {
+			let layer: string = Object.keys(this._resolvedTimeline.layers)[_j]
 
-				if (layersArray.indexOf(layer) === -1) {
-					layersArray.push(layer)
-				}
+			if (layersArray.indexOf(layer) === -1) {
+				layersArray.push(layer)
 			}
 		}
 
@@ -638,9 +617,7 @@ export class TimelineVisualizer extends EventEmitter {
 		// Draw each resolved timeline.
 
 		let timeLineState: TimelineDrawState = {}
-		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
-			timeLineState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
-		}
+		timeLineState = this.getTimelineDrawState(this._resolvedTimeline, 0)
 
 		// Find new playhead position.
 		this.computePlayheadPosition()
@@ -1231,7 +1208,7 @@ export class TimelineVisualizer extends EventEmitter {
 					// If we are hovering over a timeline object.
 					if (meta !== undefined && meta.type === 'timelineObject') {
 						// Get the timeline object and the instance being hovered over.
-						let timelineObject = this._resolvedTimelines[meta.timelineIndex].objects[meta.name]
+						let timelineObject = this._resolvedTimeline.objects[meta.name]
 						let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
 
 						// Get the position of the cursor relative to the canvas.
@@ -1425,7 +1402,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Merges two timelines by merging instances of objects that intersect each other.
 	 * @param past Older timeline.
 	 * @param present Newer timeline.
-	 * @returns {ResolvedTimeline[2]} [past, present] containing altered values.
+	 * @returns {ResolvedTimeline} containing merged timelines.
 	 */
 	mergeTimelineObjects (past: ResolvedTimeline, present: ResolvedTimeline) {
 		// Iterate over objects in the first timeline.
@@ -1464,7 +1441,7 @@ export class TimelineVisualizer extends EventEmitter {
 				}
 			}
 		})
-		return { past, present }
+		return merge(past, present)
 	}
 
 	/**
