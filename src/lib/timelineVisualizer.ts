@@ -118,7 +118,6 @@ export interface HoveredObject {
  */
 export interface TimelineObjectMetaData {
 	type: string
-	timelineIndex: number
 	name: string
 	instance: string
 }
@@ -331,7 +330,7 @@ export class TimelineVisualizer extends EventEmitter {
 			// Resolve the timeline.
 			let newTimeline = Resolver.resolveTimeline(timeline, options)
 
-			this.hideTimelineFabricObjects(this.getTimelineDrawState(this._resolvedTimeline, 0))
+			this.hideTimelineFabricObjects(this.getTimelineDrawState(this._resolvedTimeline))
 
 			// If we're using the playhead, trim the timeline.
 			if (this._drawPlayhead) {
@@ -351,7 +350,7 @@ export class TimelineVisualizer extends EventEmitter {
 				this.drawLayerLabels()
 
 				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(this._resolvedTimeline.objects, 0)
+				this.createTimelineFabricObjects(this._resolvedTimeline.objects)
 			} else {
 				// Otherwise we only see one timeline at a time.
 
@@ -365,7 +364,7 @@ export class TimelineVisualizer extends EventEmitter {
 				this.drawLayerLabels()
 
 				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(this._resolvedTimeline.objects, 0)
+				this.createTimelineFabricObjects(this._resolvedTimeline.objects)
 			}
 
 			// Draw timeline.
@@ -601,7 +600,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._playHeadTime = this._drawTimeStart
 
 		// Create fabric objects for all time-based objects.
-		this.createTimelineFabricObjects(timeline.objects, 0)
+		this.createTimelineFabricObjects(timeline.objects)
 
 		// Draw timeline.
 		this.redrawTimeline()
@@ -617,7 +616,7 @@ export class TimelineVisualizer extends EventEmitter {
 		// Draw each resolved timeline.
 
 		let timeLineState: TimelineDrawState = {}
-		timeLineState = this.getTimelineDrawState(this._resolvedTimeline, 0)
+		timeLineState = this.getTimelineDrawState(this._resolvedTimeline)
 
 		// Find new playhead position.
 		this.computePlayheadPosition()
@@ -717,10 +716,9 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Returns the draw states for all timeline objects.
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
-	 * @param {number} timelineIndex Index of timeline being drawn.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	getTimelineDrawState (timeline: ResolvedTimeline, timelineIndex: number): TimelineDrawState {
+	getTimelineDrawState (timeline: ResolvedTimeline): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 
 		for (let key in timeline.objects) {
@@ -729,7 +727,7 @@ export class TimelineVisualizer extends EventEmitter {
 
 			for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
 				let instanceObj = timeObj.resolved.instances[_i]
-				let name = 'timelineObject:' + timelineIndex.toString() + ':' + parentID + ':' + instanceObj.id
+				let name = 'timelineObject:' + parentID + ':' + instanceObj.id
 
 				currentDrawState[name] = this.createStateForObject(
 					timeObj.layer + '',
@@ -775,7 +773,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {string} parentName Name of the object's parent (the object the instance belongs to).
 	 */
 	createFabricObject (name: string) {
-		let displayName = name.split(':')[2]
+		let displayName = name.split(':')[1]
 
 		let resolvedObjectRect = new fabric.Rect({
 			left: 0,
@@ -814,16 +812,15 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Creates all the fabric objects for time-based objects.
 	 * @param {ResolvedTimelineObjects} timeline Objects to draw.
-	 * @param {number} timelineIndex Index of timeline being drawn.
 	 */
-	createTimelineFabricObjects (timeline: ResolvedTimelineObjects, timelineIndex: number) {
+	createTimelineFabricObjects (timeline: ResolvedTimelineObjects) {
 		for (let key in timeline) {
 			// Store timeline object to save on array indexing.
 			let timeObj = timeline[key]
 
 			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
 				// Create name.
-				let name = 'timelineObject:' + timelineIndex.toString() + ':' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
+				let name = 'timelineObject:' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
 
 				// If the object doesn't already have fabric objects, create new ones.
 				if (this._fabricObjects.indexOf(name) === -1) {
@@ -1452,12 +1449,11 @@ export class TimelineVisualizer extends EventEmitter {
 	timelineMetaFromString (meta: string): TimelineObjectMetaData | undefined {
 		let metaArray = meta.split(':')
 
-		if (metaArray.length === 4) {
+		if (metaArray.length === 3) {
 			return {
 				type: metaArray[0],
-				timelineIndex: parseInt(metaArray[1], 10),
-				name: metaArray[2],
-				instance: metaArray[3]
+				name: metaArray[1],
+				instance: metaArray[2]
 			}
 		}
 
