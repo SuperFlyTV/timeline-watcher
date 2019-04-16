@@ -300,31 +300,6 @@ export class TimelineVisualizer extends EventEmitter {
 	}
 
 	/**
-	 * Sets the timeline to draw.
-	 * @param {TimelineObject[]} timeline Timeline to draw.
-	 * @param {ResolveOptions} options Options to use for resolving timeline state.
-	 */
-	setTimeline (timeline: TimelineObject[], options: ResolveOptions) {
-		// Resolve timeline.
-		const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
-
-		// Save the resolved timeline:
-		this._resolvedTimelines = [resolvedTimeline]
-
-		// Get layers to draw.
-		// const o = this.getLayersToDraw()
-		// this._layerLabels = o.layers
-
-		// Calculate height of rows based on number of layers.
-		// this._rowHeight = this.calculateRowHeight(this._layerLabels)
-
-		// Draw the layer labels.
-		this.drawLayerLabels()
-
-		this.drawInitialTimeline(resolvedTimeline, options)
-	}
-
-	/**
 	 * Updates the timeline, should be called when actions are added/removed from a timeline
 	 * but the same timeline is being drawn.
 	 * @param {TimelineObject[]} timeline Timeline to draw.
@@ -337,75 +312,84 @@ export class TimelineVisualizer extends EventEmitter {
 				time: 0
 			}
 		}
+
 		if (this._resolvedTimelines.length === 0) {
-			// There are no previous timelines, run setTimeline instead:
-			return this.setTimeline(timeline, options)
-		}
+			// Resolve timeline.
+			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
 
-		// If the playhead is being drawn, the resolve time should be at the playhead time.
-		if (this._drawPlayhead) {
-			options.time = this._playHeadTime
-		}
+			// Save the resolved timeline:
+			this._resolvedTimelines = [resolvedTimeline]
 
-		// Resolve the timeline.
-		let resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+			// Draw the layer labels.
+			this.drawLayerLabels()
 
-		for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
-			let currentState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
-
-			this.hideTimelineFabricObjects(currentState)
-		}
-
-		// If we're using the playhead, trim the timeline.
-		if (this._drawPlayhead) {
-			resolvedTimeline = this.trimTimeline(resolvedTimeline, { start: this._playHeadTime })
-
-			let currentTimeline = this._resolvedTimelines[this._resolvedTimelines.length - 1]
-			// Trim the current timeline:
-			if (currentTimeline) {
-				currentTimeline = this.trimTimeline(
-					currentTimeline,
-					{ end: this._playHeadTime }
-				)
-
-				// Merge the timelines.
-				let mergedTimelines = this.mergeTimelineObjects(currentTimeline, resolvedTimeline)
-
-				// save the updated timeline to
-				this._resolvedTimelines[this._resolvedTimelines.length - 1] = mergedTimelines.past
-				resolvedTimeline = mergedTimelines.present
-
+			this.drawInitialTimeline(resolvedTimeline, options)
+		} else {
+			// If the playhead is being drawn, the resolve time should be at the playhead time.
+			if (this._drawPlayhead) {
+				options.time = this._playHeadTime
 			}
 
-			// Store the resolved timeline at a new spot:
-			this._resolvedTimelines.push(resolvedTimeline)
+			// Resolve the timeline.
+			let resolvedTimeline = Resolver.resolveTimeline(timeline, options)
 
-			// let newLayers = this.getLayersToDraw()
+			for (let _i = 0; _i < this._resolvedTimelines.length; _i++) {
+				let currentState = this.getTimelineDrawState(this._resolvedTimelines[_i], _i)
 
-			// if (newLayers.length !== this._layerLabels.length) {
-			// }
-			this.drawLayerLabels()
+				this.hideTimelineFabricObjects(currentState)
+			}
 
-			// Create new fabric objects for new objects in timeline.
-			this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
-		} else {
-			// Otherwise we only see one timeline at a time.
+			// If we're using the playhead, trim the timeline.
+			if (this._drawPlayhead) {
+				resolvedTimeline = this.trimTimeline(resolvedTimeline, { start: this._playHeadTime })
 
-			// Overwrite the previous timeline:
-			this._resolvedTimelines[this._resolvedTimelines.length - 1] = resolvedTimeline
+				let currentTimeline = this._resolvedTimelines[this._resolvedTimelines.length - 1]
+				// Trim the current timeline:
+				if (currentTimeline) {
+					currentTimeline = this.trimTimeline(
+						currentTimeline,
+						{ end: this._playHeadTime }
+					)
 
-			// let newLayers = this.getLayersToDraw()
+					// Merge the timelines.
+					let mergedTimelines = this.mergeTimelineObjects(currentTimeline, resolvedTimeline)
 
-			// if (newLayers.length !== this._layerLabels.length) {
-			// }
-			this.drawLayerLabels()
+					// save the updated timeline to
+					this._resolvedTimelines[this._resolvedTimelines.length - 1] = mergedTimelines.past
+					resolvedTimeline = mergedTimelines.present
 
-			// Create new fabric objects for new objects in timeline.
-			this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
+				}
+
+				// Store the resolved timeline at a new spot:
+				this._resolvedTimelines.push(resolvedTimeline)
+
+				// let newLayers = this.getLayersToDraw()
+
+				// if (newLayers.length !== this._layerLabels.length) {
+				// }
+				this.drawLayerLabels()
+
+				// Create new fabric objects for new objects in timeline.
+				this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
+			} else {
+				// Otherwise we only see one timeline at a time.
+
+				// Overwrite the previous timeline:
+				this._resolvedTimelines[this._resolvedTimelines.length - 1] = resolvedTimeline
+
+				// let newLayers = this.getLayersToDraw()
+
+				// if (newLayers.length !== this._layerLabels.length) {
+				// }
+				this.drawLayerLabels()
+
+				// Create new fabric objects for new objects in timeline.
+				this.createTimelineFabricObjects(resolvedTimeline.objects, this._resolvedTimelines.length - 1)
+			}
+
+			// Draw timeline.
+			this.redrawTimeline()
 		}
-
-		// Draw timeline.
-		this.redrawTimeline()
 	}
 
 	/**
