@@ -58,6 +58,9 @@ const THICKNESS_TIMELINE_OBJECT_BORDER = 1
 /** Timeline object height as a proportion of the row height. */
 const TIMELINE_OBJECT_HEIGHT = 0.8
 
+/** Interval to free up memory */
+const FREE_MEMORY_INTERVAL = 20000
+
 /** END STYLING VALUES */
 
 export interface TimelineDrawState {
@@ -234,42 +237,10 @@ export class TimelineVisualizer extends EventEmitter {
 		this._playHeadPosition = this._timelineStart
 
 		// Draw background.
-		let background = new fabric.Rect({
-			left: 0,
-			top: 0,
-			fill: COLOR_BACKGROUND,
-			width: this._canvasWidth,
-			height: this._canvasHeight,
-			selectable: false,
-			name: 'background'
-		})
-		this._canvas.add(background)
-
-		// If the playhead should be draw.
-		if (this._drawPlayhead) {
-			// Draw playhead.
-			let playhead = new fabric.Rect({
-				left: this._playHeadPosition,
-				top: 0,
-				fill: COLOR_PLAYHEAD,
-				width: THICKNESS_PLAYHEAD,
-				height: this._canvasHeight,
-				selectable: false,
-				name: NAME_PLAYHEAD
-			})
-			this._canvas.add(playhead)
-
-			// Bring playhead to front.
-			this._canvas.getObjects().forEach(element => {
-				if (element.name === NAME_PLAYHEAD) {
-					element.bringToFront()
-				}
-			})
-			// Tell canvas to re-render all objects.
-			this._canvas.renderAll()
-
-		}
-		this.updateDraw()
+		this.drawBackground()
+		
+		// Draw playhead.
+		this.drawPlayhead()
 	}
 
 	/**
@@ -277,7 +248,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	initCanvas () {
 		// Create new canvas object.
-		this._canvas = new fabric.Canvas(this._canvasId, {renderOnAddRemove: false})
+		this._canvas = new fabric.Canvas(this._canvasId, {renderOnAddRemove: false, enableRetinaScaling: false})
 
 		if (!this._canvas) throw new Error(`Canvas "${this._canvasId}" not found`)
 
@@ -297,6 +268,8 @@ export class TimelineVisualizer extends EventEmitter {
 		// Get width and height of canvas.
 		this._canvasWidth = this._canvas.getWidth()
 		this._canvasHeight = this._canvas.getHeight()
+
+		setInterval(() => { this.freeMemory() }, FREE_MEMORY_INTERVAL)
 	}
 
 	/**
@@ -448,6 +421,27 @@ export class TimelineVisualizer extends EventEmitter {
 	}
 
 	/**
+	 * Frees up memory.
+	 */
+	freeMemory () {
+		this._canvas.clear()
+		this.drawBackground()
+		this.drawPlayhead()
+		this._layerLabels = {}
+		this._layerFabricObjects = []
+		this.drawLayerLabels()
+
+		// Clear known fabric objects.
+		this._fabricObjects = []
+
+		// Create fabric objects for all time-based objects.
+		this.createTimelineFabricObjects(this._resolvedTimeline.objects)
+
+		// Draw timeline.
+		this.redrawTimeline()
+	}
+
+	/**
 	 * Draws the layer labels to the canvas.
 	 */
 	drawLayerLabels () {
@@ -547,6 +541,54 @@ export class TimelineVisualizer extends EventEmitter {
 
 			this._canvas.renderAll()
 		}
+	}
+
+	/**
+	 * Draws the timeline background.
+	 */
+	drawBackground() {
+		// Draw background.
+		let background = new fabric.Rect({
+			left: 0,
+			top: 0,
+			fill: COLOR_BACKGROUND,
+			width: this._canvasWidth,
+			height: this._canvasHeight,
+			selectable: false,
+			name: 'background'
+		})
+		this._canvas.add(background)
+	}
+
+	/**
+	 * Draws the playhead initially.
+	 */
+	drawPlayhead() {
+		// If the playhead should be draw.
+		if (this._drawPlayhead) {
+			// Draw playhead.
+			let playhead = new fabric.Rect({
+				left: this._playHeadPosition,
+				top: 0,
+				fill: COLOR_PLAYHEAD,
+				width: THICKNESS_PLAYHEAD,
+				height: this._canvasHeight,
+				selectable: false,
+				name: NAME_PLAYHEAD
+			})
+			this._canvas.add(playhead)
+
+			// Bring playhead to front.
+			this._canvas.getObjects().forEach(element => {
+				if (element.name === NAME_PLAYHEAD) {
+					element.bringToFront()
+				}
+			})
+			// Tell canvas to re-render all objects.
+			this._canvas.renderAll()
+
+		}
+		this.updateDraw()
 	}
 
 	getLayersToDraw () {
