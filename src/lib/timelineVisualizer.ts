@@ -1,4 +1,3 @@
-import { fabric } from 'fabric'
 import * as isEqual from 'lodash.isequal'
 import * as merge from 'lodash.merge'
 
@@ -16,15 +15,13 @@ const DEFAULT_ZOOM_VALUE = 100
 /** Factor to zoom by */
 const ZOOM_FACTOR = 1.001
 /** Factor to pan by (pan = PAN_FACTOR * STEP_SIZE) */
-const PAN_FACTOR = 1
+const PAN_FACTOR = 10
 
 /** Maximum layer height */
 const MAX_LAYER_HEIGHT = 60
 
 /** Amount to move playhead per second. */
 const DEFAULT_PLAYHEAD_SPEED = 1
-/** Playhead fabric object name */
-const NAME_PLAYHEAD = 'superfly-timeline:playhead'
 
 /** BEGIN STYLING VALUES */
 
@@ -56,12 +53,16 @@ const COLOR_TIMELINE_OBJECT_BORDER = 'rgba(232, 240, 255, 0.85)'
 const THICKNESS_TIMELINE_OBJECT_BORDER = 1
 
 /** Timeline object height as a proportion of the row height. */
-const TIMELINE_OBJECT_HEIGHT = 0.8
-
-/** Interval to free up memory */
-const FREE_MEMORY_INTERVAL = 20000
+const TIMELINE_OBJECT_HEIGHT = 1
 
 /** END STYLING VALUES */
+
+/** BEGIN CONSTANTS FOR STATE MANAGEMENT */
+
+const MOUSEIN = 0
+const MOUSEOUT = 1
+
+/**  CONSTANTS FOR STATE MANAGEMENT */
 
 export interface TimelineDrawState {
 	[id: string]: DrawState
@@ -125,27 +126,48 @@ export interface TimelineObjectMetaData {
 	instance: string
 }
 
+/**
+ * Stores the start and enod poins of an object on a timeline.
+ */
+export interface HoverMapData {
+	startX: number
+	endX: number
+	name: string
+}
+
+/**
+ * Stores a map of objects from the timeline displayed on the canvas.
+ * layer = layer *name*.
+ */
+export interface TimelineHoverMap {[layer: string]: HoverMapData[]}
+
 export class TimelineVisualizer extends EventEmitter {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
 
-	 /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
-	 private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
+	/** @private @readonly Proportion of the canvas to be used for the layer labels column. */
+	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
 	 /** @private @readonly Default time range to display. */
-	private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
+	 private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
-	// Timelines currently drawn.
+	// Timeline currently drawn.
 	private _resolvedTimeline: ResolvedTimeline
 	// Layers on timeline.
 	private _layerLabels: Layers = {}
+	// State of the timeline.
+	private _timelineState: TimelineDrawState = {}
+	// Map of objects for determining hovered object
+	private _hoveredObjectMap: TimelineHoverMap = {}
 
 	// Width of column of layer labels.
 	private _layerLabelWidth: number
 
 	// Canvas ID.
 	private _canvasId: string
+	// Canvas HTML container.
+	private _canvasContainer: HTMLCanvasElement
 	// Canvas to draw to.
-	private _canvas: fabric.Canvas
+	private _canvas: CanvasRenderingContext2D
 
 	// Width and height of the canvas, in pixels.
 	private _canvasWidth: number
@@ -153,6 +175,10 @@ export class TimelineVisualizer extends EventEmitter {
 
 	// Height of a timeline row, in pixels.
 	private _rowHeight: number
+	// Height of all of the rows.
+	private _rowsTotalHeight: number
+	// Number of layers.
+	private _numberOfLayers: number
 
 	// Width of the actual timeline within the canvas, in pixels.
 	private _timelineWidth: number
@@ -186,12 +212,6 @@ export class TimelineVisualizer extends EventEmitter {
 	// Current zoom amount.
 	private _timelineZoom: number = DEFAULT_ZOOM_VALUE
 
-	// List of fabric objects created.
-	private _fabricObjects: string[] = []
-
-	// List of fabric objects created for layers.
-	private _layerFabricObjects: string[] = []
-
 	// Whether or not the playhead should move.
 	private _playHeadPlaying: boolean = false
 
@@ -212,6 +232,10 @@ export class TimelineVisualizer extends EventEmitter {
 
 	// The object currently being hovered over.
 	private _hoveredOver: HoveredObject | undefined
+	// Whether the mouse last moved over an object or out.
+	private _lastHoverAction: number = MOUSEOUT
+	// Name of object that was last hovered over.
+	private _lastHoveredName: string = ""
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -241,6 +265,8 @@ export class TimelineVisualizer extends EventEmitter {
 		
 		// Draw playhead.
 		this.drawPlayhead()
+		
+		this.updateDraw()
 	}
 
 	/**
@@ -248,28 +274,22 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	initCanvas () {
 		// Create new canvas object.
-		this._canvas = new fabric.Canvas(this._canvasId, {renderOnAddRemove: false, enableRetinaScaling: false})
+		this._canvasContainer = document.getElementById(this._canvasId) as HTMLCanvasElement
 
-		if (!this._canvas) throw new Error(`Canvas "${this._canvasId}" not found`)
+		if (!this._canvasContainer) throw new Error(`Canvas "${this._canvasId}" not found`)
 
-		// Disable group selection.
-		this._canvas.selection = false
-		// Set cursor.
-		this._canvas.hoverCursor = 'default'
+		// Get rendering context.
+		this._canvas = this._canvasContainer.getContext("2d") as CanvasRenderingContext2D
 
 		// Register canvas interaction event handlers.
-		this._canvas.on('mouse:down', event => this.canvasMouseDown(event))
-		this._canvas.on('mouse:up', event => this.canvasMouseUp(event))
-		this._canvas.on('mouse:move', event => this.canvasMouseMove(event))
-		this._canvas.on('mouse:wheel', event => this.canvasScrollWheel(event))
-		this._canvas.on('mouse:over', event => this.canvasObjectHover(event, true))
-		this._canvas.on('mouse:out', event => this.canvasObjectHover(event, false))
-
+		this._canvasContainer.addEventListener('mousedown', (event) => this.canvasMouseDown(event))
+		this._canvasContainer.addEventListener('mouseup', (event) => this.canvasMouseUp(event))
+		this._canvasContainer.addEventListener('mousemove', (event) => this.canvasMouseMove(event))
+		this._canvasContainer.addEventListener('wheel', (event) => this.canvasScrollWheel(event))
+		
 		// Get width and height of canvas.
-		this._canvasWidth = this._canvas.getWidth()
-		this._canvasHeight = this._canvas.getHeight()
-
-		setInterval(() => { this.freeMemory() }, FREE_MEMORY_INTERVAL)
+		this._canvasWidth = this._canvasContainer.width
+		this._canvasHeight = this._canvasContainer.height
 	}
 
 	/**
@@ -290,10 +310,19 @@ export class TimelineVisualizer extends EventEmitter {
 			// Resolve timeline.
 			this._resolvedTimeline = Resolver.resolveTimeline(timeline, options)
 
-			// Draw the layer labels.
-			this.drawLayerLabels()
+			// Set time range.
+			this._drawTimeRange = this._defaultDrawRange
 
-			this.drawInitialTimeline(this._resolvedTimeline, options)
+			// Set timeline start and end times.
+			if (options.time !== undefined) {
+				this._drawTimeStart = options.time
+			}
+
+			// Set the end time.
+			this._drawTimeEnd = this._drawTimeStart + this._defaultDrawRange
+
+			// Move playhead to start time.
+			this._playHeadTime = this._drawTimeStart
 		} else {
 			// If the playhead is being drawn, the resolve time should be at the playhead time.
 			if (this._drawPlayhead) {
@@ -303,12 +332,7 @@ export class TimelineVisualizer extends EventEmitter {
 			// Resolve the timeline.
 			let newTimeline = Resolver.resolveTimeline(timeline, options)
 
-			this.hideTimelineFabricObjects(this.getTimelineDrawState(this._resolvedTimeline))
-
-			// If we're using the playhead, trim the timeline.
 			if (this._drawPlayhead) {
-				newTimeline = this.trimTimeline(newTimeline, { start: this._playHeadTime })
-
 				// Trim the current timeline:
 				if (newTimeline) {
 					this._resolvedTimeline = this.trimTimeline(
@@ -319,30 +343,21 @@ export class TimelineVisualizer extends EventEmitter {
 					// Merge the timelines.
 					this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, newTimeline)
 				}
-
-				this.drawLayerLabels()
-
-				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(this._resolvedTimeline.objects)
 			} else {
 				// Otherwise we only see one timeline at a time.
-
 				// Overwrite the previous timeline:
 				this._resolvedTimeline = newTimeline
-
-				// let newLayers = this.getLayersToDraw()
-
-				// if (newLayers.length !== this._layerLabels.length) {
-				// }
-				this.drawLayerLabels()
-
-				// Create new fabric objects for new objects in timeline.
-				this.createTimelineFabricObjects(this._resolvedTimeline.objects)
 			}
-
-			// Draw timeline.
-			this.redrawTimeline()
 		}
+
+		// Update layers.
+		this.updateLayerLabels()
+		// Calculate new zoom values.
+		this.updateScaledDrawTimeRange()
+		// Get timeline state.
+		this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
+		// Redraw the timeline.
+		this.redrawTimeline()
 	}
 
 	/**
@@ -420,126 +435,45 @@ export class TimelineVisualizer extends EventEmitter {
 		return Math.min(MAX_LAYER_HEIGHT, this._canvasHeight / Object.keys(layers).length)
 	}
 
-	/**
-	 * Frees up memory.
-	 */
-	freeMemory () {
-		this._canvas.clear()
-		this.drawBackground()
-		this.drawPlayhead()
-		this._layerLabels = {}
-		this._layerFabricObjects = []
-		this.drawLayerLabels()
-
-		// Clear known fabric objects.
-		this._fabricObjects = []
-
-		// Create fabric objects for all time-based objects.
-		this.createTimelineFabricObjects(this._resolvedTimeline.objects)
-
-		// Draw timeline.
-		this.redrawTimeline()
-	}
-
-	/**
-	 * Draws the layer labels to the canvas.
-	 */
-	drawLayerLabels () {
+	updateLayerLabels() {
 		// Store layers to draw.
 		const o = this.getLayersToDraw()
 
 		if (!isEqual(this._layerLabels, o.layers)) {
-
 			this._layerLabels = o.layers
 
 			// Calculate row height.
 			this._rowHeight = this.calculateRowHeight(this._layerLabels)
 
 			// Set timeline object height.
-			this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT
+			this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT 
 
-			// Iterate through layers.
-			for (let _i = 0; _i < o.layersArray.length; _i++) {
-				if (this._layerFabricObjects.indexOf(o.layersArray[_i]) === -1) {
-					// Create a background rectangle.
-					let layerRect = new fabric.Rect({
-						left: 0,
-						top: _i * this._rowHeight,
-						fill: COLOR_LABEL_BACKGROUND,
-						width: this._layerLabelWidth,
-						height: this._rowHeight,
-						selectable: false,
-						name: 'Layer:Rect:' + o.layersArray[_i],
-						objectCaching: false
-					})
+			this._numberOfLayers = Object.keys(this._layerLabels).length
+			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
+		}
+	}
 
-					// Create label.
-					let layerText = new fabric.Text(o.layersArray[_i], {
-						width: this._layerLabelWidth,
-						fontFamily: TEXT_FONT_FAMILY,
-						fontSize: TEXT_FONT_SIZE,
-						textAlign: 'left',
-						fill: TEXT_COLOR,
-						selectable: false,
-						top: (_i * this._rowHeight) + (this._rowHeight / 2),
-						name: 'Layer:Text:' + o.layersArray[_i],
-						objectCaching: false
-					})
+	/**
+	 * Draws the layer labels to the canvas.
+	 */
+	drawLayerLabels () {
+		let row = 0
+		// Iterate through layers.
+		for (let layer in Object.keys(this._layerLabels)) {
+			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
+			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
 
-					// If this is the topmost label, draw to screen.
-					// Otherwise, add a line between rows.
-					if (_i === 0) {
-						// Draw.
-						this._canvas.add(layerRect)
-						this._canvas.add(layerText)
-					} else {
-						// Create line.
-						let layerLine = new fabric.Rect({
-							left: this._layerLabelWidth,
-							top: _i * this._rowHeight,
-							fill: COLOR_LINE,
-							width: this._timelineWidth,
-							height: THICKNESS_LINE,
-							selectable: false,
-							name: 'Layer:Line:' + o.layersArray[_i]
-						})
+			this._canvas.fillStyle = TEXT_COLOR
+			this._canvas.font = TEXT_FONT_SIZE.toString() + "px " + TEXT_FONT_FAMILY
+			this._canvas.textBaseline = "middle"
+			this._canvas.fillText(this._layerLabels[layer].toString(), 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
 
-						// Draw.
-						this._canvas.add(layerRect)
-						this._canvas.add(layerText)
-						this._canvas.add(layerLine)
-					}
-
-					this._layerFabricObjects.push(o.layersArray[_i])
-				}
+			if (this._layerLabels[layer] !== 0) {
+				this._canvas.fillStyle = COLOR_LINE
+				this._canvas.fillRect(this._layerLabelWidth, row * this._rowHeight, this._timelineWidth, THICKNESS_LINE)
 			}
 
-			this._canvas.getObjects().forEach(element => {
-				if (element.name !== undefined) {
-					let name = (element.name as string).split(':')
-					if (name[0] === 'Layer') {
-						let offset = this._layerLabels[name[2]]
-						if (offset === undefined) offset = -1
-
-						if (name[1] === 'Rect') {
-							element.set({
-								top: offset * this._rowHeight,
-								height: this._rowHeight,
-							})
-						} else if (name[1] === 'Text') {
-							element.set({
-								top: (offset * this._rowHeight) - (TEXT_FONT_SIZE / 2) + (this._rowHeight / 2),
-							})
-						} else if (name[1] === 'Line') {
-							element.set({
-								top: offset * this._rowHeight,
-							})
-						}
-					}
-				}
-			})
-
-			this._canvas.renderAll()
+			row++
 		}
 	}
 
@@ -547,17 +481,8 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Draws the timeline background.
 	 */
 	drawBackground() {
-		// Draw background.
-		let background = new fabric.Rect({
-			left: 0,
-			top: 0,
-			fill: COLOR_BACKGROUND,
-			width: this._canvasWidth,
-			height: this._canvasHeight,
-			selectable: false,
-			name: 'background'
-		})
-		this._canvas.add(background)
+		this._canvas.fillStyle = COLOR_BACKGROUND
+		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
 	}
 
 	/**
@@ -566,32 +491,16 @@ export class TimelineVisualizer extends EventEmitter {
 	drawPlayhead() {
 		// If the playhead should be draw.
 		if (this._drawPlayhead) {
-			// Draw playhead.
-			let playhead = new fabric.Rect({
-				left: this._playHeadPosition,
-				top: 0,
-				fill: COLOR_PLAYHEAD,
-				width: THICKNESS_PLAYHEAD,
-				height: this._canvasHeight,
-				selectable: false,
-				name: NAME_PLAYHEAD
-			})
-			this._canvas.add(playhead)
-
-			// Bring playhead to front.
-			this._canvas.getObjects().forEach(element => {
-				if (element.name === NAME_PLAYHEAD) {
-					element.bringToFront()
-				}
-			})
-			// Tell canvas to re-render all objects.
-			this._canvas.renderAll()
-
+			this._canvas.fillStyle = COLOR_PLAYHEAD
+			this._canvas.fillRect(this._playHeadPosition, 0, THICKNESS_PLAYHEAD, this._canvasHeight)
 		}
-		this.updateDraw()
 	}
 
+	/**
+	 * Gets the layers to draw from the timeline.
+	 */
 	getLayersToDraw () {
+		this._hoveredObjectMap = {}
 		let layersArray: string[] = []
 
 		for (let _j = 0; _j < Object.keys(this._resolvedTimeline.layers).length; _j++) {
@@ -602,16 +511,11 @@ export class TimelineVisualizer extends EventEmitter {
 			}
 		}
 
-		layersArray = layersArray.sort((a, b) => {
-			if (a > b) return 1
-			if (a < b) return -1
-			return 0
-		})
-
 		let layers: Layers = {}
 
 		layersArray.forEach((layerName, index) => {
 			layers[layerName] = index
+			this._hoveredObjectMap[layerName] = []
 		})
 
 		return {
@@ -625,7 +529,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 * @param {ResolveOptions} options Resolve options.
 	 */
-	drawInitialTimeline (timeline: ResolvedTimeline, options: ResolveOptions) {
+	drawInitialTimeline (options: ResolveOptions) {
 		// Set time range.
 		this._drawTimeRange = this._defaultDrawRange
 
@@ -641,9 +545,6 @@ export class TimelineVisualizer extends EventEmitter {
 		// Move playhead to start time.
 		this._playHeadTime = this._drawTimeStart
 
-		// Create fabric objects for all time-based objects.
-		this.createTimelineFabricObjects(timeline.objects)
-
 		// Draw timeline.
 		this.redrawTimeline()
 	}
@@ -652,57 +553,17 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Redraws the timeline to the canvas.
 	 */
 	redrawTimeline () {
-		// Calculate how many pixels are required per unit time.
-		this._pixelsWidthPerUnitTime = this._timelineWidth / (this._drawTimeEnd - this._drawTimeStart)
-
-		// Draw each resolved timeline.
-
-		let timeLineState: TimelineDrawState = {}
-		timeLineState = this.getTimelineDrawState(this._resolvedTimeline)
+		this._canvas.clearRect(0, 0, this._canvasWidth, this._canvasHeight)
+		this.drawBackground()
+		this.drawLayerLabels()
 
 		// Find new playhead position.
-		this.computePlayheadPosition()
+		this.computePlayheadPosition()	
 
 		// Draw the current state.
-		this.drawTimelineState(timeLineState)
-	}
+		this.drawTimelineState(this._timelineState)
 
-	/**
-	 * Draws the playhead on the canvas.
-	 */
-	redrawPlayHead () {
-		// Check playhead should be drawn.
-		if (this._drawPlayhead) {
-			this._canvas.getObjects().forEach(element => {
-				if (element.name === NAME_PLAYHEAD) {
-					// Move playhead and bring to front.
-					element.set(this.getPlayheadFabricOptions())
-					element.bringToFront()
-				}
-			})
-			this._canvas.renderAll()
-		}
-	}
-
-	/**
-	 * Computes the properties of the playhed fabric object at the current time.
-	 */
-	getPlayheadFabricOptions () {
-		let left = this._playHeadPosition
-		let height = this._canvasHeight
-		let width = THICKNESS_PLAYHEAD
-
-		if (left === -1) {
-			left = 0
-			height = 0
-			width = 0
-		}
-
-		return {
-			left: left,
-			height: height,
-			width: width
-		}
+		this.drawPlayhead()
 	}
 
 	/**
@@ -710,49 +571,21 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {TimelineDrawState} currentDrawState State to draw.
 	 */
 	drawTimelineState (currentDrawState: TimelineDrawState) {
-		// Iterate through cavas.
-		// Seemingly the only way to update objects without clearing the canvas.
-		this._canvas.getObjects().forEach(element => {
-			if (element.name !== undefined) {
-				// Only interested in fabric.Rect and fabric.Text
-				if (element.type === 'rect' || element.type === 'text') {
-					// Check element is affected by current state.
-					// Note: This allows for partial updates.
-					if (element.name in currentDrawState) {
-						let state = currentDrawState[element.name]
+		for (let element in currentDrawState) {
+			if (currentDrawState[element].visible) {
+				this._canvas.fillStyle = COLOR_TIMELINE_OBJECT_FILL
+				this._canvas.fillRect(currentDrawState[element].left, currentDrawState[element].top, currentDrawState[element].width, currentDrawState[element].height)
 
-						// Text objects shouldn't have their dimensions modified.
-						if (element.type === 'text') {
-							element.set({
-								top: state.top,
-								left: state.left,
-								visible: state.visible
-								// visible: ((element.width as number) <= state.width) ? state.visible : false // Only show if text fits within timeline object.
-							})
-							element.setCoords()
-							element.moveTo(101)
-						} else {
-							element.set({
-								height: state.height,
-								left: state.left,
-								top: state.top,
-								width: Math.max(1,state.width), // allways let it be at least one pixel wide
-								visible: state.visible
-							})
-							element.setCoords()
-							element.moveTo(100)
-						}
-					} else if (element.name === NAME_PLAYHEAD) {
-						if (this._drawPlayhead) {
-							element.set(this.getPlayheadFabricOptions())
-						}
-					}
-				}
+				this._canvas.strokeStyle = COLOR_TIMELINE_OBJECT_BORDER
+				this._canvas.lineWidth = THICKNESS_TIMELINE_OBJECT_BORDER
+				this._canvas.strokeRect(currentDrawState[element].left, currentDrawState[element].top, currentDrawState[element].width, currentDrawState[element].height)
+
+				this._canvas.fillStyle = TEXT_COLOR
+				this._canvas.font = TEXT_FONT_SIZE.toString() + "px " + TEXT_FONT_FAMILY
+				this._canvas.textBaseline = "top"
+				this._canvas.fillText(element.split(':')[1], currentDrawState[element].left, currentDrawState[element].top)
 			}
-		})
-
-		// Tell canvas to re-render all objects.
-		this._canvas.renderAll()
+		}
 	}
 
 	/**
@@ -776,6 +609,14 @@ export class TimelineVisualizer extends EventEmitter {
 					instanceObj.start,
 					instanceObj.end
 				)
+
+				if (currentDrawState[name].visible == true) {
+					this._hoveredObjectMap[timeObj.layer + ''].push({
+						startX: currentDrawState[name].left,
+						endX: currentDrawState[name].left + currentDrawState[name].width,
+						name: name
+					})
+				}
 			}
 		}
 
@@ -796,142 +637,19 @@ export class TimelineVisualizer extends EventEmitter {
 		if (this.showOnTimeline(start, end)) {
 			// Get object dimensions and position.
 			let objectWidth = this.getObjectWidth(start, end)
+			let offset  = this.getObjectOffsetFromTimelineStart(start)
+
 			let objectTop = this.getObjectOffsetFromTop(layer)
 
 			// Set state properties.
 			state.height = this._timelineObjectHeight
-			state.left = this._timelineStart + this.getObjectOffsetFromTimelineStart(start)
+			state.left = this._timelineStart + offset
 			state.top = objectTop
 			state.width = objectWidth
 			state.visible = true
 		}
 
 		return state
-	}
-
-	/**
-	 * Creates a draw state for a timeline object.
-	 * @param {TimelineObjectInstance} object Object to draw.
-	 * @param {string} parentName Name of the object's parent (the object the instance belongs to).
-	 */
-	createFabricObject (name: string) {
-		let displayName = name.split(':')[1]
-
-		let resolvedObjectRect = new fabric.Rect({
-			left: 0,
-			width: 0,
-			height: 0,
-			top: 0,
-			fill: COLOR_TIMELINE_OBJECT_FILL,
-			stroke: COLOR_TIMELINE_OBJECT_BORDER,
-			strokeWidth: THICKNESS_TIMELINE_OBJECT_BORDER,
-			selectable: false,
-			visible: false,
-			name: name,
-			objectCaching: false
-		})
-
-		let resolvedObjectLabel = new fabric.Text(displayName, {
-			fontFamily: TEXT_FONT_FAMILY,
-			fontSize: TEXT_FONT_SIZE,
-			textAlign: 'center',
-			fill: TEXT_COLOR,
-			selectable: false,
-			top: 0,
-			left: 0,
-			visible: false,
-			name: name,
-			objectCaching: false
-		})
-
-		this._canvas.add(resolvedObjectRect)
-		this._canvas.add(resolvedObjectLabel)
-
-		// Add generated objects names to list to prevent duplication.
-		this._fabricObjects.push(name)
-	}
-
-	/**
-	 * Creates all the fabric objects for time-based objects.
-	 * @param {ResolvedTimelineObjects} timeline Objects to draw.
-	 */
-	createTimelineFabricObjects (timeline: ResolvedTimelineObjects) {
-		for (let key in timeline) {
-			// Store timeline object to save on array indexing.
-			let timeObj = timeline[key]
-
-			for (let _i = 0; _i < timeline[key].resolved.instances.length; _i++) {
-				// Create name.
-				let name = 'timelineObject:' + timeObj.id + ':' + timeObj.resolved.instances[_i].id
-
-				// If the object doesn't already have fabric objects, create new ones.
-				if (this._fabricObjects.indexOf(name) === -1) {
-					this.createFabricObject(name)
-				}
-			}
-		}
-	}
-
-	/**
-	 * Hides all of the timeline objects in the current state.
-	 * @param currentDrawState State to hide.
-	 */
-	hideTimelineFabricObjects (currentDrawState: TimelineDrawState) {
-		this._canvas.getObjects().forEach(element => {
-			if (element.name !== undefined) {
-				// Only interested in fabric.Rect and fabric.Text
-				if (element.type === 'rect' || element.type === 'text') {
-					// Check element is affected by current state.
-					if (element.name in currentDrawState) {
-						if (element.type === 'text') {
-							element.set({
-								top: 0,
-								left: 0,
-								visible: false
-							})
-						} else {
-							element.set({
-								top: 0,
-								left: 0,
-								width: 0,
-								height: 0,
-								visible: false
-							})
-						}
-					}
-				}
-			}
-		})
-
-		// Tell canvas to re-render all objects.
-		this._canvas.renderAll()
-	}
-
-	/**
-	 * Finds the object with the latest end time in a timeline and returns the time.
-	 * @param {ResolvedTimeline} timeline Timeline to search.
-	 * @returns Latest end time.
-	 */
-	findMaxEndTime (timeline: ResolvedTimeline): number {
-		// Store first end time as max.
-		let max = timeline.objects[0].resolved.instances[0].end as number
-
-		// Iterate through start times, if any time is later than current max, replace max.
-		if (Object.keys(timeline.objects).length > 1) {
-			for (let key in timeline.objects) {
-				for (let _i = 1; _i < timeline.objects[key].resolved.instances.length; _i++) {
-					if (timeline.objects[key].resolved.instances[_i].end === undefined || timeline.objects[key].resolved.instances[_i].end === null) {
-						break
-					} else {
-						let time = timeline.objects[key].resolved.instances[_i].end as number
-
-						max = (time > max) ? time : max
-					}
-				}
-			}
-		}
-
-		return max
 	}
 
 	/**
@@ -1044,7 +762,7 @@ export class TimelineVisualizer extends EventEmitter {
 		} else if (updatePlayhead) {
 			// Calculate new playhead position and redraw if the playhead has moved.
 			if (this.computePlayheadPosition()) {
-				this.redrawPlayHead()
+				this.redrawTimeline()
 			}
 		}
 		// call this function on next frame
@@ -1059,6 +777,10 @@ export class TimelineVisualizer extends EventEmitter {
 		// Get playhead position.
 		let pos = this.timeToXCoord(this._playHeadTime)
 
+		if (pos < this._timelineStart) {
+			pos = this._timelineStart
+		}
+
 		// Redraw if playhead has moved.
 		if (pos !== this._playHeadPosition) {
 			this._playHeadPosition = pos
@@ -1070,12 +792,9 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/**
 	 * Handles mouse down event.
-	 * @param opt Mouse event.
+	 * @param event Mouse event.
 	 */
-	canvasMouseDown (opt) {
-		// Extract event.
-		let event = opt.e
-
+	canvasMouseDown (event) {
 		// Store mouse is down.
 		this._mouseDown = true
 
@@ -1089,29 +808,26 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/**
 	 * Handles mouse up event.
-	 * @param opt Mouse event.
+	 * @param event Mouse event.
 	 */
-	canvasMouseUp (opt) {
+	canvasMouseUp (event) {
 		// Mouse no longer down.
 		this._mouseDown = false
 		// Reset scroll direction.
 		this._lastScrollDirection = 0
 
 		// Prevent event.
-		opt.e.preventDefault()
-		opt.e.stopPropagation()
+		event.preventDefault()
+		event.stopPropagation()
 	}
 
 	/**
 	 * Handles mouse movement on canvas.
-	 * @param opt Mouse event.
+	 * @param event Mouse event.
 	 */
-	canvasMouseMove (opt) {
+	canvasMouseMove (event) {
 		// If mouse is down.
 		if (this._mouseDown) {
-			// Extract event.
-			let event = opt.e
-
 			// If we are beginning scrolling, we can move freely.
 			if (this._lastScrollDirection === undefined || this._lastScrollDirection === 0) {
 				// Store current mouse X.
@@ -1153,47 +869,113 @@ export class TimelineVisualizer extends EventEmitter {
 					this.canvasScrollByDeltaX(-deltaX)
 				}
 			}
+
+			// Get timeline state.
+			this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
+
+			// Redraw timeline.
+			this.redrawTimeline()
+		} else {
+			// Whether an object is under the cursor.
+			let found = false
+
+			// Find the object that is currently hovered over.
+			let mousePos = this.getMousePos(this._canvasContainer, event)
+
+			if (mousePos.x > this._timelineStart) {
+				if (mousePos.y < this._rowsTotalHeight) {
+					let selectedRow = Math.floor((mousePos.y / this._rowsTotalHeight) * this._numberOfLayers)
+
+					let hoverMapData =  this._hoveredObjectMap[this._layerLabels[selectedRow]]
+
+					hoverMapData.forEach(object => {
+						if (object.startX <= mousePos.x && object.endX >= mousePos.x) {
+							found = true
+
+							if (this._lastHoveredName !== object.name) {
+								// Get object metadata from the object name of the hovered object.
+								let meta = this.timelineMetaFromString(object.name)
+
+								// If we are hovering over a timeline object.
+								if (meta !== undefined && meta.type === 'timelineObject') {
+									// Get the timeline object and the instance being hovered over.
+									let timelineObject = this._resolvedTimeline.objects[meta.name]
+									let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
+
+									// Construct hover info.
+									let hoverInfo: HoveredObject = {
+										object: timelineObject,
+										instance: instance,
+										pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
+									}
+									
+									// Set currently hovered object.
+									this._hoveredOver = hoverInfo
+
+									// Emit event.
+									this.emit('timeline:hover', { detail: this._hoveredOver })
+
+									// Store last items.
+									this._lastHoverAction = MOUSEIN
+									this._lastHoveredName = object.name
+								}
+							}
+						}
+					})
+				}
+			}
+			
+			// Emit undefined when mouse out.
+			if (!found && this._lastHoverAction == MOUSEIN) {
+				this.emit('timeline:hover', { detail: undefined })
+				this._lastHoverAction = MOUSEOUT
+			}
 		}
 	}
 
 	/**
 	 * Handles scroll wheel events on the canvas.
-	 * @param opt Scroll event.
+	 * @param event Scroll event.
 	 */
-	canvasScrollWheel (opt) {
-		// Extract event.
-		let event = opt.e
-
+	canvasScrollWheel (event) {
 		// Get mouse pointer coordinates on canvas.
-		let canvasCoord = this._canvas.getPointer(event.e)
+		let canvasCoord = this.getMousePos(this._canvasContainer, event)
 
 		// Don't scroll if mouse is not over timeline.
 		if (canvasCoord.x <= this._timelineStart) {
 			return
 		}
 
+		let changed = false
+
 		// CTRL + scroll to zoom.
 		if (event.ctrlKey === true) {
 			// If scrolling "up".
 			if (event.deltaY > 0) {
+				changed = true
+
 				// Zoom out.
 				this._timelineZoom = this._timelineZoom * Math.pow(ZOOM_FACTOR, Math.abs(event.deltaY))
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
-				this.redrawTimeline()
 			} else if (event.deltaY < 0) {
+				changed = true
+
 				// Zoom in.
 				this._timelineZoom = this._timelineZoom / Math.pow(ZOOM_FACTOR, Math.abs(event.deltaY))
 
 				// Zoom relative to cursor position.
 				this.zoomUnderCursor(canvasCoord.x)
-				this.redrawTimeline()
 			}
 		} else if (event.deltaX !== 0) { // Scroll on x-axis
+			changed = true
+
 			// Pan.
 			this.canvasScrollByDeltaX((event.deltaX * (PAN_FACTOR * this.stepSize)))
 		} else if (event.deltaY !== 0 && event.altKey === true) { // Also scroll on alt-key + scroll y-axis
+			changed = true
+
 			// Pan.
 			this.canvasScrollByDeltaX((event.deltaY * (PAN_FACTOR * this.stepSize)))
 		}
@@ -1201,6 +983,14 @@ export class TimelineVisualizer extends EventEmitter {
 		// Prevent event.
 		event.preventDefault()
 		event.stopPropagation()
+
+		if (changed) {
+			// Get timeline state.
+			this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
+
+			// Redraw timeline.
+			this.redrawTimeline()
+		}
 	}
 
 	/**
@@ -1227,48 +1017,6 @@ export class TimelineVisualizer extends EventEmitter {
 		// Update timeline start and end values.
 		this._drawTimeStart = targetStart
 		this._drawTimeEnd = targetEnd
-
-		// Redraw timeline.
-		this.redrawTimeline()
-	}
-
-	/**
-	 * Called when a canvas object is hovered over.
-	 * @param {fabric.IEvent} event Hover event.
-	 * @param {boolean} over Whether the cursor has moved over an object or out of an object.
-	 */
-	canvasObjectHover (event: fabric.IEvent, over: boolean) {
-		if (over) {
-			if (event.target) {
-				if (event.target.name) {
-					// Get object metadata from the object name of the hovered object.
-					let meta = this.timelineMetaFromString(event.target.name)
-
-					// If we are hovering over a timeline object.
-					if (meta !== undefined && meta.type === 'timelineObject') {
-						// Get the timeline object and the instance being hovered over.
-						let timelineObject = this._resolvedTimeline.objects[meta.name]
-						let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
-
-						// Get the position of the cursor relative to the canvas.
-						let cursorPostion = this._canvas.getPointer(event.e)
-
-						// Construct hover info.
-						let hoverInfo: HoveredObject = {
-							object: timelineObject,
-							instance: instance,
-							pointer: { xPostion: cursorPostion.x, yPosition: cursorPostion.y }
-						}
-
-						this._hoveredOver = hoverInfo
-					}
-				}
-			}
-		} else {
-			this._hoveredOver = undefined
-		}
-
-		this.emit('timeline:hover', { detail: this._hoveredOver })
 	}
 
 	/**
@@ -1276,6 +1024,9 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	updateScaledDrawTimeRange () {
 		this._scaledDrawTimeRange = this._drawTimeRange * (this._timelineZoom / 100)
+
+		// Calculate how many pixels are required per unit time.
+		this._pixelsWidthPerUnitTime = this._timelineWidth / (this._drawTimeEnd - this._drawTimeStart)
 	}
 
 	/**
@@ -1358,6 +1109,20 @@ export class TimelineVisualizer extends EventEmitter {
 
 		// (Proportion of time * timeline width) + layer label width
 		return ((time - this._drawTimeStart) / (this._drawTimeEnd - this._drawTimeStart) * this._timelineWidth) + this._timelineStart
+	}
+
+	/**
+	 * Gets the mouse position relative to the top-left of the canvas.
+	 * @param canvas 
+	 * @param evt
+	 * @returns {x: number, y: number} Position.
+	 */
+	getMousePos(canvas, evt) {
+		var rect = canvas.getBoundingClientRect();
+		return {
+		  x: evt.clientX - rect.left,
+		  y: evt.clientY - rect.top
+		};
 	}
 
 	/**
@@ -1473,10 +1238,6 @@ export class TimelineVisualizer extends EventEmitter {
 							}
 						})
 					})
-				} else {
-					console.log('not equal:')
-					console.log(pastObj)
-					console.log(presentObj)
 				}
 			}
 		})
