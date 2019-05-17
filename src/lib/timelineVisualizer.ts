@@ -1398,7 +1398,7 @@ export class TimelineVisualizer extends EventEmitter {
 					if (Object.keys(newObjects).indexOf(objId) === -1) {
 						let newObject: ResolvedTimelineObject = {
 							content: obj.content,
-							enable: obj.content,
+							enable: obj.enable,
 							id: obj.id,
 							layer: obj.layer,
 							resolved: {
