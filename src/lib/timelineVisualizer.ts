@@ -1,8 +1,16 @@
 import * as isEqual from 'lodash.isequal'
 import * as merge from 'lodash.merge'
 
-import { Resolver, TimelineObject, ResolveOptions, ResolvedTimeline, ResolvedTimelineObjects, TimelineObjectInstance, ResolvedTimelineObject } from 'superfly-timeline'
-import { EventEmitter } from 'events';
+import {
+	Resolver,
+	TimelineObject,
+	ResolveOptions,
+	ResolvedTimeline,
+	ResolvedTimelineObjects,
+	TimelineObjectInstance,
+	ResolvedTimelineObject
+} from 'superfly-timeline'
+import { EventEmitter } from 'events'
 
 /** Step size/ time step. */
 const DEFAULT_STEP_SIZE = 1
@@ -235,7 +243,7 @@ export class TimelineVisualizer extends EventEmitter {
 	// Whether the mouse last moved over an object or out.
 	private _lastHoverAction: number = MOUSEOUT
 	// Name of object that was last hovered over.
-	private _lastHoveredName: string = ""
+	private _lastHoveredName: string = ''
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -262,10 +270,10 @@ export class TimelineVisualizer extends EventEmitter {
 
 		// Draw background.
 		this.drawBackground()
-		
+
 		// Draw playhead.
 		this.drawPlayhead()
-		
+
 		this.updateDraw()
 	}
 
@@ -279,14 +287,14 @@ export class TimelineVisualizer extends EventEmitter {
 		if (!this._canvasContainer) throw new Error(`Canvas "${this._canvasId}" not found`)
 
 		// Get rendering context.
-		this._canvas = this._canvasContainer.getContext("2d") as CanvasRenderingContext2D
+		this._canvas = this._canvasContainer.getContext('2d') as CanvasRenderingContext2D
 
 		// Register canvas interaction event handlers.
 		this._canvasContainer.addEventListener('mousedown', (event) => this.canvasMouseDown(event))
 		this._canvasContainer.addEventListener('mouseup', (event) => this.canvasMouseUp(event))
 		this._canvasContainer.addEventListener('mousemove', (event) => this.canvasMouseMove(event))
 		this._canvasContainer.addEventListener('wheel', (event) => this.canvasScrollWheel(event))
-		
+
 		// Get width and height of canvas.
 		this._canvasWidth = this._canvasContainer.width
 		this._canvasHeight = this._canvasContainer.height
@@ -422,7 +430,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Accessor for polling the currently hovered over object.
 	 */
-	getHoveredObject() {
+	getHoveredObject () {
 		return this._hoveredOver
 	}
 
@@ -435,7 +443,7 @@ export class TimelineVisualizer extends EventEmitter {
 		return Math.min(MAX_LAYER_HEIGHT, this._canvasHeight / Object.keys(layers).length)
 	}
 
-	updateLayerLabels() {
+	updateLayerLabels () {
 		// Store layers to draw.
 		const o = this.getLayersToDraw()
 
@@ -446,7 +454,7 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowHeight = this.calculateRowHeight(this._layerLabels)
 
 			// Set timeline object height.
-			this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT 
+			this._timelineObjectHeight = this._rowHeight * TIMELINE_OBJECT_HEIGHT
 
 			this._numberOfLayers = Object.keys(this._layerLabels).length
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
@@ -464,8 +472,8 @@ export class TimelineVisualizer extends EventEmitter {
 			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
 
 			this._canvas.fillStyle = TEXT_COLOR
-			this._canvas.font = TEXT_FONT_SIZE.toString() + "px " + TEXT_FONT_FAMILY
-			this._canvas.textBaseline = "middle"
+			this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
+			this._canvas.textBaseline = 'middle'
 			this._canvas.fillText(this._layerLabels[layer].toString(), 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
 
 			if (this._layerLabels[layer] !== 0) {
@@ -480,7 +488,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Draws the timeline background.
 	 */
-	drawBackground() {
+	drawBackground () {
 		this._canvas.fillStyle = COLOR_BACKGROUND
 		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
 	}
@@ -488,7 +496,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Draws the playhead initially.
 	 */
-	drawPlayhead() {
+	drawPlayhead () {
 		// If the playhead should be draw.
 		if (this._drawPlayhead) {
 			this._canvas.fillStyle = COLOR_PLAYHEAD
@@ -558,7 +566,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this.drawLayerLabels()
 
 		// Find new playhead position.
-		this.computePlayheadPosition()	
+		this.computePlayheadPosition()
 
 		// Draw the current state.
 		this.drawTimelineState(this._timelineState)
@@ -581,8 +589,8 @@ export class TimelineVisualizer extends EventEmitter {
 				this._canvas.strokeRect(currentDrawState[element].left, currentDrawState[element].top, currentDrawState[element].width, currentDrawState[element].height)
 
 				this._canvas.fillStyle = TEXT_COLOR
-				this._canvas.font = TEXT_FONT_SIZE.toString() + "px " + TEXT_FONT_FAMILY
-				this._canvas.textBaseline = "top"
+				this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
+				this._canvas.textBaseline = 'top'
 				this._canvas.fillText(element.split(':')[1], currentDrawState[element].left, currentDrawState[element].top)
 			}
 		}
@@ -610,7 +618,7 @@ export class TimelineVisualizer extends EventEmitter {
 					instanceObj.end
 				)
 
-				if (currentDrawState[name].visible == true) {
+				if (currentDrawState[name].visible === true) {
 					this._hoveredObjectMap[timeObj.layer + ''].push({
 						startX: currentDrawState[name].left,
 						endX: currentDrawState[name].left + currentDrawState[name].width,
@@ -637,7 +645,7 @@ export class TimelineVisualizer extends EventEmitter {
 		if (this.showOnTimeline(start, end)) {
 			// Get object dimensions and position.
 			let objectWidth = this.getObjectWidth(start, end)
-			let offset  = this.getObjectOffsetFromTimelineStart(start)
+			let offset = this.getObjectOffsetFromTimelineStart(start)
 
 			let objectTop = this.getObjectOffsetFromTop(layer)
 
@@ -886,7 +894,7 @@ export class TimelineVisualizer extends EventEmitter {
 				if (mousePos.y < this._rowsTotalHeight) {
 					let selectedRow = Math.floor((mousePos.y / this._rowsTotalHeight) * this._numberOfLayers)
 
-					let hoverMapData =  this._hoveredObjectMap[this._layerLabels[selectedRow]]
+					let hoverMapData = this._hoveredObjectMap[this._layerLabels[selectedRow]]
 
 					hoverMapData.forEach(object => {
 						if (object.startX <= mousePos.x && object.endX >= mousePos.x) {
@@ -908,7 +916,7 @@ export class TimelineVisualizer extends EventEmitter {
 										instance: instance,
 										pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
 									}
-									
+
 									// Set currently hovered object.
 									this._hoveredOver = hoverInfo
 
@@ -924,9 +932,9 @@ export class TimelineVisualizer extends EventEmitter {
 					})
 				}
 			}
-			
+
 			// Emit undefined when mouse out.
-			if (!found && this._lastHoverAction == MOUSEIN) {
+			if (!found && this._lastHoverAction === MOUSEIN) {
 				this.emit('timeline:hover', { detail: undefined })
 				this._lastHoverAction = MOUSEOUT
 			}
@@ -1113,16 +1121,16 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/**
 	 * Gets the mouse position relative to the top-left of the canvas.
-	 * @param canvas 
+	 * @param canvas
 	 * @param evt
 	 * @returns {x: number, y: number} Position.
 	 */
-	getMousePos(canvas, evt) {
-		var rect = canvas.getBoundingClientRect();
+	getMousePos (canvas, evt) {
+		const rect = canvas.getBoundingClientRect()
 		return {
 		  x: evt.clientX - rect.left,
 		  y: evt.clientY - rect.top
-		};
+		}
 	}
 
 	/**
