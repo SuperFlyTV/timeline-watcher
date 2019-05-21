@@ -475,16 +475,16 @@ export class TimelineVisualizer extends EventEmitter {
 	private drawLayerLabels () {
 		let row = 0
 		// Iterate through layers.
-		for (let layer in Object.keys(this._layerLabels)) {
+		for (let layerName of Object.keys(this._layerLabels)) {
 			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
 			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
 
 			this._canvas.fillStyle = TEXT_COLOR
 			this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 			this._canvas.textBaseline = 'middle'
-			this._canvas.fillText(this._layerLabels[layer].toString(), 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
+			this._canvas.fillText(layerName, 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
 
-			if (this._layerLabels[layer] !== 0) {
+			if (this._layerLabels[layerName] !== 0) {
 				this._canvas.fillStyle = COLOR_LINE
 				this._canvas.fillRect(this._layerLabelWidth, row * this._rowHeight, this._timelineWidth, THICKNESS_LINE)
 			}
@@ -928,7 +928,11 @@ export class TimelineVisualizer extends EventEmitter {
 				if (mousePos.y < this._rowsTotalHeight) {
 					let selectedRow = Math.floor((mousePos.y / this._rowsTotalHeight) * this._numberOfLayers)
 
-					let hoverMapData = this._hoveredObjectMap[this._layerLabels[selectedRow]]
+					let layer: string | undefined
+					Object.keys(this._layerLabels).forEach(layerName => {
+						if (this._layerLabels[layerName] === selectedRow) layer = layerName
+					})
+					let hoverMapData = (layer ? this._hoveredObjectMap[layer] : []) || []
 
 					hoverMapData.forEach(object => {
 						if (object.startX <= mousePos.x && object.endX >= mousePos.x) {
