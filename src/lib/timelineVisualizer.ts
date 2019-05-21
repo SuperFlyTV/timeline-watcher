@@ -533,31 +533,6 @@ export class TimelineVisualizer extends EventEmitter {
 	}
 
 	/**
-	 * Draws the timeline initially.
-	 * @param {ResolvedTimeline} timeline Timeline to draw.
-	 * @param {ResolveOptions} options Resolve options.
-	 */
-	drawInitialTimeline (options: ResolveOptions) {
-		// Set time range.
-		this._drawTimeRange = this._defaultDrawRange
-
-		// Calculate new zoom values.
-		this.updateScaledDrawTimeRange()
-
-		// Set timeline start and end times.
-		if (options.time !== undefined) {
-			this._drawTimeStart = options.time
-		}
-		this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange
-
-		// Move playhead to start time.
-		this._playHeadTime = this._drawTimeStart
-
-		// Draw timeline.
-		this.redrawTimeline()
-	}
-
-	/**
 	 * Redraws the timeline to the canvas.
 	 */
 	private redrawTimeline () {
