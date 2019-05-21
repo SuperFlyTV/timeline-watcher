@@ -370,8 +370,6 @@ export class TimelineVisualizer extends EventEmitter {
 		this.updateLayerLabels()
 		// Calculate new zoom values.
 		this.updateScaledDrawTimeRange()
-		// Get timeline state.
-		this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
 		// Redraw the timeline.
 		this.redrawTimeline()
 	}
@@ -601,6 +599,9 @@ export class TimelineVisualizer extends EventEmitter {
 
 		// Find new playhead position.
 		this.computePlayheadPosition()
+
+		// Recompute objects positions
+		this._timelineState = this.getTimelineDrawState(this._resolvedStates)
 
 		// Draw the current state.
 		this.drawTimelineState(this._timelineState)
@@ -912,9 +913,6 @@ export class TimelineVisualizer extends EventEmitter {
 				}
 			}
 
-			// Get timeline state.
-			this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
-
 			// Redraw timeline.
 			this.redrawTimeline()
 		} else {
@@ -1031,9 +1029,6 @@ export class TimelineVisualizer extends EventEmitter {
 		event.stopPropagation()
 
 		if (changed) {
-			// Get timeline state.
-			this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
-
 			// Redraw timeline.
 			this.redrawTimeline()
 		}
