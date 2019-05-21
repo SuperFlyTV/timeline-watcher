@@ -39,6 +39,11 @@ const COLOR_BACKGROUND = '#333333'
 /** Layer label background color. */
 const COLOR_LABEL_BACKGROUND = '#666666'
 
+/** Color of the ruler lines */
+const RULER_LINE_COLOR = '#999999'
+/** Width of the ruler lines */
+const RULER_LINE_WIDTH = 1
+
 /** Playhead color. */
 const COLOR_PLAYHEAD = 'rgba(255, 0, 0, 0.5)'
 
@@ -491,6 +496,57 @@ export class TimelineVisualizer extends EventEmitter {
 	private drawBackground () {
 		this._canvas.fillStyle = COLOR_BACKGROUND
 		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
+
+		this.drawBackgroundRuler()
+	}
+	/**
+	 * Draw a ruler on top of background
+	 */
+	private drawBackgroundRuler () {
+
+		const range = this._scaledDrawTimeRange
+		const endTime = this._drawTimeStart + range
+
+		const circaNumberOfLines = 5
+		const rounder = Math.pow(10, Math.floor(Math.log10(range / circaNumberOfLines))) // What to round the ruler to
+		const rounderNext = rounder * 10
+
+		const numberOfLines = Math.floor(range / rounder)
+
+		const rulerDiff = rounder
+
+		const startTime = Math.floor(this._drawTimeStart / rounder) * rounder
+
+		const opacity = (
+			Math.min(1, circaNumberOfLines / numberOfLines)
+		)
+		if (rulerDiff) {
+			this._canvas.strokeStyle = RULER_LINE_COLOR
+			this._canvas.lineWidth = RULER_LINE_WIDTH
+			for (let rulerTime = startTime; rulerTime < endTime; rulerTime += rulerDiff) {
+				this._canvas.beginPath()
+				let x = this.getObjectOffsetFromTimelineStart(rulerTime)
+
+				let distanceToNext = (rulerTime / rounderNext) % 1
+				if (distanceToNext > 0.5) distanceToNext -= 1
+				distanceToNext = Math.abs(distanceToNext)
+
+				if (distanceToNext < 0.01) {
+					// Is a significant line
+					this._canvas.globalAlpha = 1
+				} else {
+					this._canvas.globalAlpha = opacity
+				}
+
+				if (x >= 0) {
+					x += this._timelineStart
+					this._canvas.moveTo(x, 0)
+					this._canvas.lineTo(x, this._canvasHeight)
+				}
+				this._canvas.stroke()
+			}
+			this._canvas.globalAlpha = 1
+		}
 	}
 
 	/**
