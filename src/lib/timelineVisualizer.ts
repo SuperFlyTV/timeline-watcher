@@ -164,7 +164,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
 	// Timeline currently drawn.
-	private _resolvedStates: ResolvedTimeline
+	private _resolvedStates: ResolvedTimeline | undefined
 	// Layers on timeline.
 	private _layerLabels: Layers = {}
 	// State of the timeline.
@@ -567,12 +567,13 @@ export class TimelineVisualizer extends EventEmitter {
 	private getLayersToDraw () {
 		this._hoveredObjectMap = {}
 		let layersArray: string[] = []
+		if (this._resolvedStates) {
+			for (let _j = 0; _j < Object.keys(this._resolvedStates.layers).length; _j++) {
+				let layer: string = Object.keys(this._resolvedStates.layers)[_j]
 
-		for (let _j = 0; _j < Object.keys(this._resolvedStates.layers).length; _j++) {
-			let layer: string = Object.keys(this._resolvedStates.layers)[_j]
-
-			if (layersArray.indexOf(layer) === -1) {
-				layersArray.push(layer)
+				if (layersArray.indexOf(layer) === -1) {
+					layersArray.push(layer)
+				}
 			}
 		}
 
@@ -636,29 +637,30 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	private getTimelineDrawState (timeline: ResolvedTimeline): TimelineDrawState {
+	private getTimelineDrawState (timeline: ResolvedTimeline | undefined): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
+		if (timeline) {
+			for (let key in timeline.objects) {
+				let timeObj = timeline.objects[key]
+				let parentID = timeObj.id
 
-		for (let key in timeline.objects) {
-			let timeObj = timeline.objects[key]
-			let parentID = timeObj.id
+				for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
+					let instanceObj = timeObj.resolved.instances[_i]
+					let name = 'timelineObject:' + parentID + ':' + instanceObj.id
 
-			for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
-				let instanceObj = timeObj.resolved.instances[_i]
-				let name = 'timelineObject:' + parentID + ':' + instanceObj.id
+					currentDrawState[name] = this.createStateForObject(
+						timeObj.layer + '',
+						instanceObj.start,
+						instanceObj.end
+					)
 
-				currentDrawState[name] = this.createStateForObject(
-					timeObj.layer + '',
-					instanceObj.start,
-					instanceObj.end
-				)
-
-				if (currentDrawState[name].visible === true) {
-					this._hoveredObjectMap[timeObj.layer + ''].push({
-						startX: currentDrawState[name].left,
-						endX: currentDrawState[name].left + currentDrawState[name].width,
-						name: name
-					})
+					if (currentDrawState[name].visible === true) {
+						this._hoveredObjectMap[timeObj.layer + ''].push({
+							startX: currentDrawState[name].left,
+							endX: currentDrawState[name].left + currentDrawState[name].width,
+							name: name
+						})
+					}
 				}
 			}
 		}
@@ -943,25 +945,28 @@ export class TimelineVisualizer extends EventEmitter {
 								// If we are hovering over a timeline object.
 								if (meta !== undefined && meta.type === 'timelineObject') {
 									// Get the timeline object and the instance being hovered over.
-									let timelineObject = this._resolvedStates.objects[meta.name]
-									let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
+									if (this._resolvedStates) {
+										let timelineObject = this._resolvedStates.objects[meta.name]
 
-									// Construct hover info.
-									let hoverInfo: HoveredObject = {
-										object: timelineObject,
-										instance: instance,
-										pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
+										let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
+
+										// Construct hover info.
+										let hoverInfo: HoveredObject = {
+											object: timelineObject,
+											instance: instance,
+											pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
+										}
+
+										// Set currently hovered object.
+										this._hoveredOver = hoverInfo
+
+										// Emit event.
+										this.emit('timeline:hover', { detail: this._hoveredOver })
+
+										// Store last items.
+										this._lastHoverAction = MOUSEIN
+										this._lastHoveredName = object.name
 									}
-
-									// Set currently hovered object.
-									this._hoveredOver = hoverInfo
-
-									// Emit event.
-									this.emit('timeline:hover', { detail: this._hoveredOver })
-
-									// Store last items.
-									this._lastHoverAction = MOUSEIN
-									this._lastHoveredName = object.name
 								}
 							}
 						}
