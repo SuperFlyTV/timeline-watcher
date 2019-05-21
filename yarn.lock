@@ -243,10 +243,10 @@
     "@types/glob" "*"
     "@types/node" "*"
 
-"@types/underscore@^1.8.8":
-  version "1.8.12"
-  resolved "https://registry.yarnpkg.com/@types/underscore/-/underscore-1.8.12.tgz#ac19f61b8aecfc9b9da608f68148fc27f56d7d33"
-  integrity sha512-HU+WSgUul9NeSFOwR1vtBkIVygGM9PARRRMr6I0r5zyJXMVptVKy6Kedq6C71VY+8DisQ5mDTzqpvg1ohC0YKg==
+"@types/underscore@^1.8.9":
+  version "1.8.18"
+  resolved "https://registry.yarnpkg.com/@types/underscore/-/underscore-1.8.18.tgz#025371cfe062439aaa088d2b64af87cbcfe3c2b7"
+  integrity sha512-mXQ8u416FWMPjp2zWrcVmOZtzKQM6IeyVcuE+RGF/04JLBrMjfnmNKn74VN8fIkFzU97TpzkP0ny0p0h65eC7w==
 
 JSONStream@^1.0.3, JSONStream@^1.0.4:
   version "1.3.5"
@@ -4401,6 +4401,11 @@ lodash.memoize@~3.0.3:
   resolved "https://registry.yarnpkg.com/lodash.memoize/-/lodash.memoize-3.0.4.tgz#2dcbd2c287cbc0a55cc42328bd0c736150d53e3f"
   integrity sha1-LcvSwofLwKVcxCMovQxzYVDVPj8=
 
+lodash.merge@^4.6.1:
+  version "4.6.1"
+  resolved "https://registry.yarnpkg.com/lodash.merge/-/lodash.merge-4.6.1.tgz#adc25d9cb99b9391c59624f379fbba60d7111d54"
+  integrity sha512-AOYza4+Hf5z1/0Hztxpm2/xiPZgi/cjMqdnKTUWTBSKchJlxXXuUSxCCl8rJlf4g6yww/j6mA8nC8Hw/EZWxKQ==
+
 lodash.sortby@^4.7.0:
   version "4.7.0"
   resolved "https://registry.yarnpkg.com/lodash.sortby/-/lodash.sortby-4.7.0.tgz#edd14c824e2cc9c1e0b0a1b42bb5210516a42438"
@@ -5037,7 +5042,7 @@ nwsapi@^2.0.7:
   resolved "https://registry.yarnpkg.com/nwsapi/-/nwsapi-2.1.1.tgz#08d6d75e69fd791bdea31507ffafe8c843b67e9c"
   integrity sha512-T5GaA1J/d34AC8mkrFD2O0DR17kwJ702ZOtJOsS8RpbsQZVOC2/xYFb1i/cw+xdM54JIlMuojjDOYct8GIWtwg==
 
-nyc@^13.3.2:
+nyc@^13.3.0:
   version "13.3.0"
   resolved "https://registry.yarnpkg.com/nyc/-/nyc-13.3.0.tgz#da4dbe91a9c8b9ead3f4f3344c76f353e3c78c75"
   integrity sha512-P+FwIuro2aFG6B0Esd9ZDWUd51uZrAEoGutqZxzrVmYl3qSfkLgcQpBPBjtDFsUQLFY1dvTQJPOyeqr8S9GF8w==
@@ -6644,12 +6649,12 @@ subarg@^1.0.0:
   dependencies:
     minimist "^1.1.0"
 
-superfly-timeline@^6.0.3:
-  version "6.0.3"
-  resolved "https://registry.yarnpkg.com/superfly-timeline/-/superfly-timeline-6.0.3.tgz#ae3d9004f19f5262b90ee81229c5ada19eb3e98f"
-  integrity sha512-1SGAXR2HMh2GM0D2CuN9lFgC1+7Z3zzh4PtEJSlsq8OLIL8SYu1tWpn1bT2Nq4P4FffnQnBGImQGKL3dfSDnhw==
+superfly-timeline@^7.1.1:
+  version "7.1.1"
+  resolved "https://registry.yarnpkg.com/superfly-timeline/-/superfly-timeline-7.1.1.tgz#05aef17c7aae9736c5e4ed62963612f1c98e3cd5"
+  integrity sha512-RE4r3Kyp3884bRGQwx+zVFdRhT4zRVAmMhHnPkufe0sPNzZ3SomdtcEe5ps9eqAEXDG/bhoFE8hCcj/isELccw==
   dependencies:
-    "@types/underscore" "^1.8.8"
+    "@types/underscore" "^1.8.9"
     underscore "^1.9.1"
 
 supports-color@^2.0.0:

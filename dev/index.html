@@ -15,6 +15,45 @@
 
         var timeline = [
 			{
+				id: 'block0',
+				layer: 'block',
+				enable: {
+					start: 0,
+					duration: 150,
+					repeating: 200
+				},
+				content: {}
+			},
+
+			{
+				id: 'video0',
+				layer: '0',
+				enable: {
+					start: '#block0',
+					duration: 150
+				},
+				content: {}
+			},
+			{
+				id: 'commercial',
+				layer: '0',
+				enable: {
+					start: '#video0.start + #video0.duration / 2',
+					duration: 30
+				},
+				content: {}
+			},
+			{
+				id: 'video_bg',
+				layer: '1',
+				enable: {
+					start: '#video0 -5',
+					end: '#video0 +5'
+				},
+				content: {}
+			},
+			/*
+			{
 				id: 'video0',
 				layer: '0',
 				enable: {
@@ -51,36 +90,40 @@
 				content: {}
 			},
 			{
-					id: 'video3',
-					layer: '3',
-					enable: {
-						start: '0',
-						// end: '#video2.end + 600'
-					},
-					content: {}
-				}
+				id: 'video3',
+				layer: '3',
+				enable: {
+					start: '0',
+					// end: '#video2.end + 600'
+				},
+				content: {}
+			}
+			*/
 		]
 
         var options = {
-            time: 0
+			time: 0,
+			limitTime: 99999,
+			limitCount: 1000
         }
 
-		visuals.setTimeline(timeline, options)
+		visuals.updateTimeline(timeline, options)
 
 		visuals.setViewPort({
 			playPlayhead: true,
 			// playheadTime: 220,
-			zoom: 5*1000,
-			playSpeed: 1000,
+			// zoom: 5*1000,
+			playSpeed: 100,
 
-			playViewPort: false,
+			playViewPort: true,
 
-			playheadTime: 10*1000,
+			playheadTime: 0*1000,
 
 			timestamp: 0*1000
 
 		})
 
+		/*
 		setTimeout(() => {
 
 			
@@ -134,6 +177,7 @@
 
 			visuals.updateTimeline(timelineAdded)
 		}, 1000)
+		*/
         
         </script>
     </body>

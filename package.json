@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "info": "npm-scripts-info",
-    "build": "trash dist && yarn build:main && yarn bundle:minify",
+    "build": "trash dist && yarn build:main && yarn bundle:minify && yarn bundle:bundle",
     "build:dev": "yarn build:main && yarn bundle:bundle",
     "buildstart": "yarn build && yarn start",
     "buildinspect": "yarn build && yarn inspect",
@@ -114,6 +114,7 @@
   "dependencies": {
     "fabric": "^2.6.0",
     "lodash.isequal": "^4.5.0",
-    "superfly-timeline": "^6.0.3"
+    "lodash.merge": "^4.6.1",
+    "superfly-timeline": "^7.1.1"
   }
 }
