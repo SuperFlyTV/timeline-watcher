@@ -280,7 +280,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Initialises the canvas and registers canvas events.
 	 */
-	initCanvas () {
+	private initCanvas () {
 		// Create new canvas object.
 		this._canvasContainer = document.getElementById(this._canvasId) as HTMLCanvasElement
 
@@ -306,7 +306,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {TimelineObject[]} timeline Timeline to draw.
 	 * @param {ResolveOptions} options Resolve options.
 	 */
-	updateTimeline (timeline: TimelineObject[], options?: ResolveOptions) {
+	public updateTimeline (timeline: TimelineObject[], options?: ResolveOptions) {
 		// If options have not been specified set time to 0.
 		if (options === undefined) {
 			options = {
@@ -373,7 +373,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Playback speed currently not implemented.
 	 * @param viewPort Object to update viewport with.
 	 */
-	setViewPort (viewPort: ViewPort) {
+	public setViewPort (viewPort: ViewPort) {
 		// Whether the viewport has changed.
 		let changed = false
 
@@ -430,7 +430,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Accessor for polling the currently hovered over object.
 	 */
-	getHoveredObject () {
+	public getHoveredObject () {
 		return this._hoveredOver
 	}
 
@@ -439,11 +439,11 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {String[]} layers Map of layers to use.
 	 * @returns Height of rows.
 	 */
-	calculateRowHeight (layers: Layers): number {
+	private calculateRowHeight (layers: Layers): number {
 		return Math.min(MAX_LAYER_HEIGHT, this._canvasHeight / Object.keys(layers).length)
 	}
 
-	updateLayerLabels () {
+	private updateLayerLabels () {
 		// Store layers to draw.
 		const o = this.getLayersToDraw()
 
@@ -464,7 +464,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Draws the layer labels to the canvas.
 	 */
-	drawLayerLabels () {
+	private drawLayerLabels () {
 		let row = 0
 		// Iterate through layers.
 		for (let layer in Object.keys(this._layerLabels)) {
@@ -488,7 +488,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Draws the timeline background.
 	 */
-	drawBackground () {
+	private drawBackground () {
 		this._canvas.fillStyle = COLOR_BACKGROUND
 		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
 	}
@@ -496,7 +496,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Draws the playhead initially.
 	 */
-	drawPlayhead () {
+	private drawPlayhead () {
 		// If the playhead should be draw.
 		if (this._drawPlayhead) {
 			this._canvas.fillStyle = COLOR_PLAYHEAD
@@ -507,7 +507,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Gets the layers to draw from the timeline.
 	 */
-	getLayersToDraw () {
+	private getLayersToDraw () {
 		this._hoveredObjectMap = {}
 		let layersArray: string[] = []
 
@@ -560,7 +560,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Redraws the timeline to the canvas.
 	 */
-	redrawTimeline () {
+	private redrawTimeline () {
 		this._canvas.clearRect(0, 0, this._canvasWidth, this._canvasHeight)
 		this.drawBackground()
 		this.drawLayerLabels()
@@ -578,7 +578,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Draws a timeline state to the canvas.
 	 * @param {TimelineDrawState} currentDrawState State to draw.
 	 */
-	drawTimelineState (currentDrawState: TimelineDrawState) {
+	private drawTimelineState (currentDrawState: TimelineDrawState) {
 		for (let element in currentDrawState) {
 			if (currentDrawState[element].visible) {
 				this._canvas.fillStyle = COLOR_TIMELINE_OBJECT_FILL
@@ -601,7 +601,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	getTimelineDrawState (timeline: ResolvedTimeline): TimelineDrawState {
+	private getTimelineDrawState (timeline: ResolvedTimeline): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 
 		for (let key in timeline.objects) {
@@ -638,7 +638,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} end End time.
 	 * @returns {DrawState} State of the object to draw.
 	 */
-	createStateForObject (layer: string, start: number, end: number | null): DrawState {
+	private createStateForObject (layer: string, start: number, end: number | null): DrawState {
 		// Default state (hidden).
 		let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
 		// State should be default if the object is not being shown.
@@ -665,7 +665,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} start start time of the object.
 	 * @returns {number} Offset in pixels.
 	 */
-	getObjectOffsetFromTimelineStart (start: number): number {
+	private getObjectOffsetFromTimelineStart (start: number): number {
 		// Calculate offset.
 		let offset = (start - this._drawTimeStart) * this._pixelsWidthPerUnitTime
 
@@ -683,7 +683,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} end End time of the object.
 	 * @returns {number} Width in pixels.
 	 */
-	getObjectWidth (startTime: number, endTime: number | null): number {
+	private getObjectWidth (startTime: number, endTime: number | null): number {
 
 		if (!endTime) return this._canvasWidth
 
@@ -705,7 +705,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} end Object end time.
 	 * @returns {true} if object should be shown on the timeline.
 	 */
-	showOnTimeline (start: number, end: number | null) {
+	private showOnTimeline (start: number, end: number | null) {
 		let isAfter = start >= this._drawTimeEnd
 		let isBefore = (end || Infinity) <= this._drawTimeStart
 		return !isAfter && !isBefore
@@ -716,7 +716,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {string} layer Object's layer.
 	 * @returns Position relative to top of canvas in pixels.
 	 */
-	getObjectOffsetFromTop (layerName: string): number {
+	private getObjectOffsetFromTop (layerName: string): number {
 		let top = this._layerLabels[layerName]
 
 		return top * this._rowHeight
@@ -725,7 +725,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Moves the playhead. Called periodically.
 	 */
-	updateDraw () {
+	private updateDraw () {
 		const now = Date.now()
 		// How long time since last update:
 		const dt: number = (
@@ -781,7 +781,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Calulates the playhead position based on time.
 	 * @returns true if the playhead has moved.
 	 */
-	computePlayheadPosition (): boolean {
+	private computePlayheadPosition (): boolean {
 		// Get playhead position.
 		let pos = this.timeToXCoord(this._playHeadTime)
 
@@ -802,7 +802,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Handles mouse down event.
 	 * @param event Mouse event.
 	 */
-	canvasMouseDown (event) {
+	private canvasMouseDown (event) {
 		// Store mouse is down.
 		this._mouseDown = true
 
@@ -818,7 +818,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Handles mouse up event.
 	 * @param event Mouse event.
 	 */
-	canvasMouseUp (event) {
+	private canvasMouseUp (event) {
 		// Mouse no longer down.
 		this._mouseDown = false
 		// Reset scroll direction.
@@ -833,7 +833,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Handles mouse movement on canvas.
 	 * @param event Mouse event.
 	 */
-	canvasMouseMove (event) {
+	private canvasMouseMove (event) {
 		// If mouse is down.
 		if (this._mouseDown) {
 			// If we are beginning scrolling, we can move freely.
@@ -945,7 +945,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Handles scroll wheel events on the canvas.
 	 * @param event Scroll event.
 	 */
-	canvasScrollWheel (event) {
+	private canvasScrollWheel (event) {
 		// Get mouse pointer coordinates on canvas.
 		let canvasCoord = this.getMousePos(this._canvasContainer, event)
 
@@ -1005,7 +1005,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Scroll across the canvas by a specified X value.
 	 * @param {number} deltaX Value to move by.
 	 */
-	canvasScrollByDeltaX (deltaX: number) {
+	private canvasScrollByDeltaX (deltaX: number) {
 		// Calculate new starting time.
 		let targetStart = this._drawTimeStart + (deltaX / this._pixelsWidthPerUnitTime)
 
@@ -1030,7 +1030,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/**
 	 * Calculates the new scaled timeline start and end times according to the current zoom value.
 	 */
-	updateScaledDrawTimeRange () {
+	private updateScaledDrawTimeRange () {
 		this._scaledDrawTimeRange = this._drawTimeRange * (this._timelineZoom / 100)
 
 		// Calculate how many pixels are required per unit time.
@@ -1041,7 +1041,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * Zooms into/out of timeline, keeping the time under the cursor in the same position.
 	 * @param cursorX Position of mouse cursor.
 	 */
-	zoomUnderCursor (cursorX: number) {
+	private zoomUnderCursor (cursorX: number) {
 		// Get time under cursor.
 		let coordToTime = this.cursorPosToTime(cursorX)
 
@@ -1072,7 +1072,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param cursorX Mouse cursor position (x-axis).
 	 * @returns Time under cursor, or -1 if the cursor is not over the timeline.
 	 */
-	cursorPosToTime (cursorX: number): number {
+	private cursorPosToTime (cursorX: number): number {
 		// Check if over timeline.
 		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
 			return -1
@@ -1088,7 +1088,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param cursorX Mouse cursor position.
 	 * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
 	 */
-	getCursorPositionAcrossTimeline (cursorX: number): number {
+	private getCursorPositionAcrossTimeline (cursorX: number): number {
 		// Check if over timeline.
 		if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
 			return -1
@@ -1105,7 +1105,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} time The time to convert.
 	 * @returns {number} The X coordinate of the time.
 	 */
-	timeToXCoord (time: number): number {
+	private timeToXCoord (time: number): number {
 		// If playhead is off the canvas
 		if (time < this._drawTimeStart) {
 			return -1
@@ -1125,7 +1125,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param evt
 	 * @returns {x: number, y: number} Position.
 	 */
-	getMousePos (canvas, evt) {
+	private getMousePos (canvas, evt) {
 		const rect = canvas.getBoundingClientRect()
 		return {
 		  x: evt.clientX - rect.left,
@@ -1138,7 +1138,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param timeline Timeline to trim.
 	 * @param trim Times to trim between.
 	 */
-	trimTimeline (timeline: ResolvedTimeline, trim: TrimProperties): ResolvedTimeline {
+	private trimTimeline (timeline: ResolvedTimeline, trim: TrimProperties): ResolvedTimeline {
 		// The new resolved objects.
 		let newObjects: ResolvedTimelineObjects = {}
 
@@ -1216,7 +1216,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param present Newer timeline.
 	 * @returns {ResolvedTimeline} containing merged timelines.
 	 */
-	mergeTimelineObjects (past: ResolvedTimeline, present: ResolvedTimeline) {
+	private mergeTimelineObjects (past: ResolvedTimeline, present: ResolvedTimeline) {
 		// Iterate over objects in the first timeline.
 		Object.keys(past.objects).forEach((objId: string) => {
 			const pastObj = past.objects[objId]
@@ -1257,7 +1257,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {string} meta Metadata string.
 	 * @returns {TimelineObjectMetaData | undefined} Extracted metadata or undefined if the string does not contain the required values.
 	 */
-	timelineMetaFromString (meta: string): TimelineObjectMetaData | undefined {
+	private timelineMetaFromString (meta: string): TimelineObjectMetaData | undefined {
 		let metaArray = meta.split(':')
 
 		if (metaArray.length === 3) {
