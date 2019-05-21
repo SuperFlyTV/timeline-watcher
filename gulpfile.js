@@ -28,3 +28,23 @@ gulp.task('minify', function () {
       .pipe(sourcemaps.write('./'))
       .pipe(gulp.dest('./dist/js/'));
   });
+
+  gulp.task('bundle', function () {
+    // set up the browserify instance on a task basis
+    var b = browserify({
+      entries: './dist/index.js',
+      standalone: 'TimelineVisualizer',
+      debug: true
+    });
+  
+    return b.bundle()
+      .pipe(source('app.js'))
+      .pipe(rename("timeline-visualizer.js"))
+      .pipe(buffer())
+      .pipe(sourcemaps.init({loadMaps: true}))
+          // Add transformation tasks to the pipeline here.
+          // .pipe(uglify())
+          .on('error', log.error)
+      .pipe(sourcemaps.write('./'))
+      .pipe(gulp.dest('./dist/js/'));
+  });
