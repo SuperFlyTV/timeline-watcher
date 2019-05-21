@@ -10,6 +10,5 @@ wallaby.conf.js
 
 .DS_Store
 
-dist/
 local/
 dev/**/*.js
