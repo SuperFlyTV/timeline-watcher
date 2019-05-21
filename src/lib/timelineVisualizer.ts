@@ -164,7 +164,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
 	// Timeline currently drawn.
-	private _resolvedTimeline: ResolvedTimeline
+	private _resolvedStates: ResolvedTimeline
 	// Layers on timeline.
 	private _layerLabels: Layers = {}
 	// State of the timeline.
@@ -315,13 +315,15 @@ export class TimelineVisualizer extends EventEmitter {
 		// If options have not been specified set time to 0.
 		if (options === undefined) {
 			options = {
-				time: 0
+				time: 0,
+				limitCount: 10
 			}
 		}
 
-		if (this._resolvedTimeline === undefined) {
+		if (this._resolvedStates === undefined) {
 			// Resolve timeline.
-			this._resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+			this._resolvedStates = Resolver.resolveAllStates(resolvedTimeline)
 
 			// Set time range.
 			this._drawTimeRange = this._defaultDrawRange
@@ -343,23 +345,24 @@ export class TimelineVisualizer extends EventEmitter {
 			}
 
 			// Resolve the timeline.
-			let newTimeline = Resolver.resolveTimeline(timeline, options)
+			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
+			const newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
 
 			if (this._drawPlayhead) {
 				// Trim the current timeline:
-				if (newTimeline) {
-					this._resolvedTimeline = this.trimTimeline(
-						this._resolvedTimeline,
+				if (newResolvedStates) {
+					this._resolvedStates = this.trimTimeline(
+						this._resolvedStates,
 						{ end: this._playHeadTime }
 					)
 
 					// Merge the timelines.
-					this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, newTimeline)
+					this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates)
 				}
 			} else {
 				// Otherwise we only see one timeline at a time.
 				// Overwrite the previous timeline:
-				this._resolvedTimeline = newTimeline
+				this._resolvedStates = newResolvedStates
 			}
 		}
 
@@ -567,8 +570,8 @@ export class TimelineVisualizer extends EventEmitter {
 		this._hoveredObjectMap = {}
 		let layersArray: string[] = []
 
-		for (let _j = 0; _j < Object.keys(this._resolvedTimeline.layers).length; _j++) {
-			let layer: string = Object.keys(this._resolvedTimeline.layers)[_j]
+		for (let _j = 0; _j < Object.keys(this._resolvedStates.layers).length; _j++) {
+			let layer: string = Object.keys(this._resolvedStates.layers)[_j]
 
 			if (layersArray.indexOf(layer) === -1) {
 				layersArray.push(layer)
@@ -938,7 +941,7 @@ export class TimelineVisualizer extends EventEmitter {
 								// If we are hovering over a timeline object.
 								if (meta !== undefined && meta.type === 'timelineObject') {
 									// Get the timeline object and the instance being hovered over.
-									let timelineObject = this._resolvedTimeline.objects[meta.name]
+									let timelineObject = this._resolvedStates.objects[meta.name]
 									let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
 
 									// Construct hover info.
