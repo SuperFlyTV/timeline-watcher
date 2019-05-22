@@ -5922,7 +5922,7 @@ exports.wrapInnerExpressions = wrapInnerExpressions;
 function words2Expression(operatorList, words) {
     if (!words || !words.length)
         throw new Error('words2Expression: syntax error: unbalanced expression');
-    if (words.length === 1 && _.isArray(words[0]))
+    while (words.length === 1 && _.isArray(words[0]))
         words = words[0];
     if (words.length === 1)
         return words[0];
@@ -5949,20 +5949,23 @@ function words2Expression(operatorList, words) {
 function validateExpression(operatorList, expr0, breadcrumbs) {
     if (!breadcrumbs)
         breadcrumbs = 'ROOT';
-    if (_.isObject(expr0)) {
+    if (_.isObject(expr0) && !_.isArray(expr0)) {
         var expr = expr0;
         if (!_.has(expr, 'l'))
-            throw new Error('validateExpression: "+breadcrumbs+".l missing');
+            throw new Error("validateExpression: " + breadcrumbs + ".l missing in " + JSON.stringify(expr));
         if (!_.has(expr, 'o'))
-            throw new Error('validateExpression: "+breadcrumbs+".o missing');
+            throw new Error("validateExpression: " + breadcrumbs + ".o missing in " + JSON.stringify(expr));
         if (!_.has(expr, 'r'))
-            throw new Error('validateExpression: "+breadcrumbs+".r missing');
+            throw new Error("validateExpression: " + breadcrumbs + ".r missing in " + JSON.stringify(expr));
         if (!_.isString(expr.o))
-            throw new Error('validateExpression: "+breadcrumbs+".o not a string');
+            throw new Error("validateExpression: " + breadcrumbs + ".o not a string");
         if (!wordIsOperator(operatorList, expr.o))
             throw new Error(breadcrumbs + '.o not valid: "' + expr.o + '"');
         validateExpression(operatorList, expr.l, breadcrumbs + '.l');
         validateExpression(operatorList, expr.r, breadcrumbs + '.r');
+    }
+    else if (!_.isNull(expr0) && !_.isString(expr0) && !_.isNumber(expr0)) {
+        throw new Error("validateExpression: " + breadcrumbs + " is of invalid type");
     }
 }
 
