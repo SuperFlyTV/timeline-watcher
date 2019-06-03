@@ -37,8 +37,12 @@ const COLOR_BACKGROUND = '#333333'
 /** Layer label background color. */
 const COLOR_LABEL_BACKGROUND = '#666666'
 
+/** Ruler header bar background colour */
+const COLOR_RULER_HEADER = '#111111'
 /** Color of the ruler lines */
 const RULER_LINE_COLOR = '#999999'
+/** Height of ruler header bar */
+const RULER_HEADER_HEIGHT = 25
 /** Width of the ruler lines */
 const RULER_LINE_WIDTH = 1
 
@@ -198,6 +202,14 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/** Width of the actual drawing-view within the canvas [pixels] */
 	private _viewDrawWidth: number
+	// Width of the actual timeline within the canvas, in pixels.
+	private _timelineWidth: number
+	// Start and end of the timeline relative to the left of the canvas, in pixels.
+	private _timelineStart: number
+	// Timeline offset from top of canvas, in pixels.
+	private _timelineTop: number
+	// Height of timeline, in pixels.
+	private _timelineHeight: number
 
 	/** Start of the drawing-view relative to the left of the canvas [pixels] */
 	private _viewDrawX: number
@@ -286,6 +298,10 @@ export class TimelineVisualizer extends EventEmitter {
 		// Calculate timeline width and start point.
 		this._viewDrawX = this._layerLabelWidth
 		this._viewDrawWidth = this._canvasWidth - this._layerLabelWidth
+		this._timelineWidth = this._canvasWidth - this._layerLabelWidth
+		this._timelineStart = this._layerLabelWidth
+		this._timelineTop = RULER_HEADER_HEIGHT
+		this._timelineHeight = this._canvasHeight - this._timelineTop
 
 		// Draw background.
 		this.drawBackground()
@@ -482,7 +498,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @returns Height of rows.
 	 */
 	private calculateRowHeight (layers: Layers): number {
-		return Math.min(MAX_LAYER_HEIGHT, this._canvasHeight / Object.keys(layers).length)
+		return Math.min(MAX_LAYER_HEIGHT, this._timelineHeight / Object.keys(layers).length)
 	}
 
 	private updateLayerLabels () {
@@ -512,16 +528,17 @@ export class TimelineVisualizer extends EventEmitter {
 		for (let layerName of Object.keys(this._layerLabels)) {
 
 			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
-			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
+			this._canvas.fillRect(0, this._timelineTop + (row * this._rowHeight), this._layerLabelWidth, this._rowHeight)
 
 			this._canvas.fillStyle = TEXT_COLOR
 			this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 			this._canvas.textBaseline = 'middle'
-			this._canvas.fillText(layerName, 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
+			this._canvas.textAlign = 'left'
+			this._canvas.fillText(layerName, 0, this._timelineTop + (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth)
 
 			if (this._layerLabels[layerName] !== 0) {
 				this._canvas.fillStyle = COLOR_LINE
-				this._canvas.fillRect(this._layerLabelWidth, row * this._rowHeight, this._viewDrawWidth, THICKNESS_LINE)
+				this._canvas.fillRect(this._layerLabelWidth, this._timelineTop + (row * this._rowHeight), this._timelineWidth, THICKNESS_LINE)
 			}
 
 			row++
@@ -534,9 +551,21 @@ export class TimelineVisualizer extends EventEmitter {
 	private drawBackground () {
 		this._canvas.fillStyle = COLOR_BACKGROUND
 		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
+	}
+
+	private drawTimeLabels() {
+		this._canvas.fillStyle = COLOR_RULER_HEADER
+		this._canvas.fillRect(0, 0, this._canvasWidth, RULER_HEADER_HEIGHT)
+
+		this._canvas.fillStyle = TEXT_COLOR
+		this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
+		this._canvas.textBaseline = 'middle'
+		this._canvas.textAlign = 'right'
+		this._canvas.fillText(Math.round(this._drawTimeStart) + '', this._timelineStart, RULER_HEADER_HEIGHT / 2)
 
 		this.drawBackgroundRuler()
 	}
+
 	/**
 	 * Draw a ruler on top of background
 	 */
@@ -561,6 +590,10 @@ export class TimelineVisualizer extends EventEmitter {
 		if (rulerDiff) {
 			this._canvas.strokeStyle = RULER_LINE_COLOR
 			this._canvas.lineWidth = RULER_LINE_WIDTH
+			this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
+			this._canvas.textBaseline = 'middle'
+			this._canvas.textAlign = 'right'
+			this._canvas.fillStyle = TEXT_COLOR
 			for (let rulerTime = startTime; rulerTime < endTime; rulerTime += rulerDiff) {
 				this._canvas.beginPath()
 				let x = this.timeToXCoord(rulerTime)
@@ -577,8 +610,15 @@ export class TimelineVisualizer extends EventEmitter {
 				}
 
 				if (x >= this._viewDrawX) {
+					const drawText = (x >= 50 && this._canvas.globalAlpha === 1)
+
+					x += this._timelineStart
 					this._canvas.moveTo(x, 0)
 					this._canvas.lineTo(x, this._canvasHeight)
+
+					if (drawText) {
+						this._canvas.fillText(rulerTime + '', x, RULER_HEADER_HEIGHT / 2)
+					}
 				}
 				this._canvas.stroke()
 			}
@@ -631,6 +671,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private redrawTimeline () {
 		this._canvas.clearRect(0, 0, this._canvasWidth, this._canvasHeight)
 		this.drawBackground()
+		this.drawTimeLabels()
 		this.drawLayerLabels()
 
 		// Recompute objects positions
@@ -802,7 +843,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private getObjectOffsetFromTop (layerName: string): number {
 		let top = this._layerLabels[layerName]
 
-		return top * this._rowHeight
+		return this._timelineTop + (top * this._rowHeight)
 	}
 
 	/**
@@ -935,7 +976,7 @@ export class TimelineVisualizer extends EventEmitter {
 			let mousePos = this.getMousePos(this._canvasContainer, event)
 
 			if (mousePos.x > this._viewDrawX) {
-				if (mousePos.y < this._rowsTotalHeight) {
+				if (mousePos.y > this._timelineTop && mousePos.y < this._rowsTotalHeight) {
 					let selectedRow = Math.floor((mousePos.y / this._rowsTotalHeight) * this._numberOfLayers)
 
 					let layer: string | undefined
