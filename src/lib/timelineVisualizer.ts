@@ -160,37 +160,38 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/** @private @readonly Proportion of the canvas to be used for the layer labels column. */
 	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
-	 /** @private @readonly Default time range to display. */
-	 private readonly _defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize
 
-	// Timeline currently drawn.
+	/** Timeline currently drawn. */
 	private _resolvedStates: ResolvedTimeline | undefined
-	// Layers on timeline.
+	/** Layers on timeline. */
 	private _layerLabels: Layers = {}
-	// State of the timeline.
+	/** State of the timeline. */
 	private _timelineState: TimelineDrawState = {}
-	// Map of objects for determining hovered object
+	/** Map of objects for determining hovered object */
 	private _hoveredObjectMap: TimelineHoverMap = {}
 
-	// Width of column of layer labels.
+	/** Width of column of layer labels. */
 	private _layerLabelWidth: number
 
-	// Canvas ID.
+	/** Canvas ID. */
 	private _canvasId: string
-	// Canvas HTML container.
+	/** Canvas HTML container. */
 	private _canvasContainer: HTMLCanvasElement
-	// Canvas to draw to.
+	/** Canvas to draw to. */
 	private _canvas: CanvasRenderingContext2D
 
-	// Width and height of the canvas, in pixels.
+	/** Width of the canvas [pixels] */
 	private _canvasWidth: number
+	/** Height of the canvas [pixels] */
 	private _canvasHeight: number
 
-	// Height of a timeline row, in pixels.
+	/** Height of a timeline row [pixels] */
 	private _rowHeight: number
-	// Height of all of the rows.
+
+	/** Height of all of the rows. */
 	private _rowsTotalHeight: number
-	// Number of layers.
+
+	/** Number of layers. */
 	private _numberOfLayers: number
 
 	// Width of the actual timeline within the canvas, in pixels.
