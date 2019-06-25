@@ -246,6 +246,22 @@ export class TimelineVisualizer extends EventEmitter {
 	/** Name of object that was last hovered over. */
 	private _lastHoveredName: string = ''
 
+	/** If the visualizer automatically should re-resolve the timeline when navigating the viewport */
+	private _timelineResolveAuto: boolean = false
+	/** At what time the timeline was resolved [time] */
+	private _timelineResolveStart: number = 0
+	private _timelineResolveEnd: number = 0
+	private _timelineResolveCount: number = 100
+	private _timelineResolveCountAdjust: number = 1
+
+	/** How much extra (outside the current viewport) the timeline should be resolved to [ratio] */
+	private _timelineResolveExpand: number = 3
+
+	private latestTimeline: TimelineObject[]
+	private latestUpdateTime: number = 0
+	private latestOptions: ResolveOptions
+	private reresolveTimeout: NodeJS.Timer | null = null
+
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
 	 */
@@ -312,28 +328,58 @@ export class TimelineVisualizer extends EventEmitter {
 				limitCount: 10
 			}
 		}
+		this.latestTimeline = timeline
+		this.latestOptions = options
 
-		if (this._resolvedStates === undefined) {
-			// Resolve timeline.
-			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
-			this._resolvedStates = Resolver.resolveAllStates(resolvedTimeline)
+		if (!options.limitTime) {
+			this._timelineResolveAuto = true
+		} else {
+			this._timelineResolveAuto = false
+		}
+
+		const options2 = {
+			...options
+		}
+
+		if (this._timelineResolveAuto) {
+			this.updateTimelineResolveWindow()
+		}
+		if (this._resolvedStates === undefined) { // If first time this runs
 
 			// Set timeline start and end times.
-			if (options.time !== undefined) {
-				this._viewStartTime = options.time
+			if (options2.time !== undefined) {
+				this._viewStartTime = options2.time
 			}
-
 			// Move playhead to start time.
 			this._playHeadTime = this._viewStartTime
+		}
+		this._updateTimeline()
+	}
+	private _updateTimeline () {
+
+		const options2 = {
+			...this.latestOptions
+		}
+		if (this._timelineResolveAuto) {
+
+			options2.time = this._timelineResolveStart
+			options2.limitTime = this._timelineResolveEnd
+
+			options2.limitCount = Math.ceil(this._timelineResolveCount * this._timelineResolveCountAdjust)
+		}
+
+		// Resolve the timeline.
+		const startResolve = Date.now()
+		const resolvedTimeline = Resolver.resolveTimeline(this.latestTimeline, options2)
+		const newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
+
+		if (this._resolvedStates === undefined) { // If first time this runs
+			this._resolvedStates = newResolvedStates
 		} else {
 			// If the playhead is being drawn, the resolve time should be at the playhead time.
 			if (this._drawPlayhead) {
-				options.time = this._playHeadTime
+				options2.time = this._playHeadTime
 			}
-
-			// Resolve the timeline.
-			const resolvedTimeline = Resolver.resolveTimeline(timeline, options)
-			const newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
 
 			if (this._drawPlayhead) {
 				// Trim the current timeline:
@@ -355,8 +401,13 @@ export class TimelineVisualizer extends EventEmitter {
 
 		// Update layers.
 		this.updateLayerLabels()
+
+		this.latestUpdateTime = Date.now() - startResolve
+
 		// Redraw the timeline.
 		this.redrawTimeline()
+
+		this.latestUpdateTime = Date.now() - startResolve
 	}
 
 	/**
@@ -589,6 +640,8 @@ export class TimelineVisualizer extends EventEmitter {
 		this.drawTimelineState(this._timelineState)
 
 		this.drawPlayhead()
+
+		this.checkAutomaticReresolve()
 	}
 
 	/**
@@ -1174,6 +1227,57 @@ export class TimelineVisualizer extends EventEmitter {
 		}
 
 		return
+	}
+	private updateTimelineResolveWindow () {
+		const { start, end } = this.getExpandedStartEndTime(1)
+
+		this._timelineResolveStart	= start
+		this._timelineResolveEnd	= end
+
+		if (this.latestUpdateTime) {
+			// Calculate an optimal number of objects to create, so that the drawing still runs smoothly.
+
+			const targetResolveTime = 50 // ms
+
+			let ratio = targetResolveTime / this.latestUpdateTime
+
+			this._timelineResolveCountAdjust = (1 + (this._timelineResolveCountAdjust * ratio)) / 2
+		}
+	}
+	private getExpandedStartEndTime (multiplier: number = 1) {
+		let start = this._viewStartTime
+		let end = this.viewEndTime
+
+		let duration = end - start
+
+		let expand = duration * (this._timelineResolveExpand - 1) * multiplier
+
+		start	-= expand * 0.33
+		end		+= expand * 0.66 // expand more into the future
+
+		start	= Math.max(0, start)
+		end		= Math.max(0, end)
+
+		return { start, end }
+	}
+	private checkAutomaticReresolve () {
+
+		const { start, end } = this.getExpandedStartEndTime(0.2)
+
+		if (
+			this._timelineResolveAuto && (
+				start	< this._timelineResolveStart ||
+				end		> this._timelineResolveEnd
+			)
+		) {
+			if (!this.reresolveTimeout) {
+				this.reresolveTimeout = setTimeout(() => {
+					this.reresolveTimeout = null
+					this.updateTimelineResolveWindow()
+					this._updateTimeline()
+				}, Math.max(100, this.latestUpdateTime * 5))
+			}
+		}
 	}
 	// --------------------- Conversions between position & time -------------
 	/**
