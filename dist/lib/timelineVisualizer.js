@@ -6,8 +6,6 @@ const superfly_timeline_1 = require("superfly-timeline");
 const events_1 = require("events");
 /** Step size/ time step. */
 const DEFAULT_STEP_SIZE = 1;
-/** Draw range (will be multiplied by DEFAULT_STEP_SIZE). */
-const DEFAULT_DRAW_RANGE = 500;
 /** Width of label column. */
 const LABEL_WIDTH_OF_TIMELINE = 0.25;
 /** Default zoom */
@@ -61,32 +59,45 @@ class TimelineVisualizer extends events_1.EventEmitter {
         this.stepSize = DEFAULT_STEP_SIZE;
         /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
         this._layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE;
-        /** @private @readonly Default time range to display. */
-        this._defaultDrawRange = DEFAULT_DRAW_RANGE * this.stepSize;
-        // Layers on timeline.
+        /** Layers on timeline. */
         this._layerLabels = {};
-        // State of the timeline.
+        /** State of the timeline. */
         this._timelineState = {};
-        // Map of objects for determining hovered object
+        /** Map of objects for determining hovered object */
         this._hoveredObjectMap = {};
-        // Start and end time of the current view. Defines the objects within view on the timeline.
-        this._drawTimeStart = 0;
-        // Store whether the mouse is held down, for scrolling.
+        /** Start time of the current view. Defines the objects within view on the timeline [time] */
+        this._viewStartTime = 0;
+        /** Range of the current view [time] */
+        // private _viewTimeRange: number = 1
+        // private _drawTimeEnd: number
+        /** Store whether the mouse is held down, for scrolling. */
         this._mouseDown = false;
-        // Current zoom amount.
+        /** Current zoom amount. */
         this._timelineZoom = DEFAULT_ZOOM_VALUE;
-        // Whether or not the playhead should move.
+        /** Whether or not the playhead should move. */
         this._playHeadPlaying = false;
-        // Speed of the playhead [units / second]
+        /** Speed of the playhead [units / second] */
         this._playSpeed = DEFAULT_PLAYHEAD_SPEED;
-        // The current time position of the playhead.
+        /** The current time position of the playhead. */
         this._playHeadTime = 0;
-        // The last time updateDraw() did a draw.
+        /** The last time updateDraw() did a draw. */
         this._updateDrawLastTime = 0;
-        // Whether the mouse last moved over an object or out.
+        /** Whether the mouse last moved over an object or out. */
         this._lastHoverAction = MOUSEOUT;
-        // Name of object that was last hovered over.
+        /** Name of object that was last hovered over. */
         this._lastHoveredName = '';
+        /** If the visualizer automatically should re-resolve the timeline when navigating the viewport */
+        this._timelineResolveAuto = false;
+        /** At what time the timeline was resolved [time] */
+        this._timelineResolveStart = 0;
+        this._timelineResolveEnd = 0;
+        this._timelineResolveZoom = 1;
+        this._timelineResolveCount = 100;
+        this._timelineResolveCountAdjust = 1;
+        /** How much extra (outside the current viewport) the timeline should be resolved to [ratio] */
+        this._timelineResolveExpand = 3;
+        this.latestUpdateTime = 0;
+        this.reresolveTimeout = null;
         // Initialise other values.
         this._canvasId = canvasId;
         this.initCanvas();
@@ -94,10 +105,8 @@ class TimelineVisualizer extends events_1.EventEmitter {
         // Calculate width of label column.
         this._layerLabelWidth = this._canvasWidth * this._layerLabelWidthProportionOfCanvas;
         // Calculate timeline width and start point.
-        this._timelineWidth = this._canvasWidth - this._layerLabelWidth;
-        this._timelineStart = this._layerLabelWidth;
-        // Put playhead at timeline start.
-        this._playHeadPosition = this._timelineStart;
+        this._viewDrawX = this._layerLabelWidth;
+        this._viewDrawWidth = this._canvasWidth - this._layerLabelWidth;
         // Draw background.
         this.drawBackground();
         // Draw playhead.
@@ -137,29 +146,47 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 limitCount: 10
             };
         }
-        if (this._resolvedStates === undefined) {
-            // Resolve timeline.
-            const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(timeline, options);
-            this._resolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
-            // Set time range.
-            this._drawTimeRange = this._defaultDrawRange;
+        this.latestTimeline = timeline;
+        this.latestOptions = options;
+        if (!options.limitTime) {
+            this._timelineResolveAuto = true;
+        }
+        else {
+            this._timelineResolveAuto = false;
+        }
+        const options2 = Object.assign({}, options);
+        if (this._timelineResolveAuto) {
+            this.updateTimelineResolveWindow();
+        }
+        if (this._resolvedStates === undefined) { // If first time this runs
             // Set timeline start and end times.
-            if (options.time !== undefined) {
-                this._drawTimeStart = options.time;
+            if (options2.time !== undefined) {
+                this._viewStartTime = options2.time;
             }
-            // Set the end time.
-            this._drawTimeEnd = this._drawTimeStart + this._defaultDrawRange;
             // Move playhead to start time.
-            this._playHeadTime = this._drawTimeStart;
+            this._playHeadTime = this._viewStartTime;
+        }
+        this._updateTimeline();
+    }
+    _updateTimeline() {
+        const options2 = Object.assign({}, this.latestOptions);
+        if (this._timelineResolveAuto) {
+            options2.time = this._timelineResolveStart;
+            options2.limitTime = this._timelineResolveEnd;
+            options2.limitCount = Math.ceil(this._timelineResolveCount * this._timelineResolveCountAdjust);
+        }
+        // Resolve the timeline.
+        const startResolve = Date.now();
+        const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(this.latestTimeline, options2);
+        const newResolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
+        if (this._resolvedStates === undefined) { // If first time this runs
+            this._resolvedStates = newResolvedStates;
         }
         else {
             // If the playhead is being drawn, the resolve time should be at the playhead time.
             if (this._drawPlayhead) {
-                options.time = this._playHeadTime;
+                options2.time = this._playHeadTime;
             }
-            // Resolve the timeline.
-            const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(timeline, options);
-            const newResolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
             if (this._drawPlayhead) {
                 // Trim the current timeline:
                 if (newResolvedStates) {
@@ -176,10 +203,10 @@ class TimelineVisualizer extends events_1.EventEmitter {
         }
         // Update layers.
         this.updateLayerLabels();
-        // Calculate new zoom values.
-        this.updateScaledDrawTimeRange();
+        this.latestUpdateTime = Date.now() - startResolve;
         // Redraw the timeline.
         this.redrawTimeline();
+        this.latestUpdateTime = Date.now() - startResolve;
     }
     /**
      * Sets the viewport to a position, zoom, and playback speed.
@@ -193,16 +220,13 @@ class TimelineVisualizer extends events_1.EventEmitter {
         if (viewPort.zoom !== undefined) {
             // Zoom to specified zoom.
             this._timelineZoom = viewPort.zoom;
-            this.updateScaledDrawTimeRange();
-            this._drawTimeEnd = this._timelineStart + this._scaledDrawTimeRange;
             changed = true;
         }
         // If timestamp has been specified.
         if (viewPort.timestamp !== undefined) {
             // Set start time to specified time.
             if (viewPort.timestamp > 0) {
-                this._drawTimeStart = viewPort.timestamp;
-                this._drawTimeEnd = this._drawTimeStart + this._scaledDrawTimeRange;
+                this._viewStartTime = viewPort.timestamp;
                 changed = true;
             }
         }
@@ -225,11 +249,12 @@ class TimelineVisualizer extends events_1.EventEmitter {
             if (!this._drawPlayhead)
                 throw new Error('setViewPort: viewPort.playheadTime was set, but drawPlayhead was not set in constructor');
             this._playHeadTime = Math.max(0, viewPort.playheadTime);
+            if (this._playHeadTime > 0)
+                this._updateDrawLastTime = this._playHeadTime;
             changed = true;
         }
         // Redraw timeline if anything has changed.
         if (changed === true) {
-            this.computePlayheadPosition();
             this.redrawTimeline();
         }
     }
@@ -275,7 +300,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
             this._canvas.fillText(layerName, 0, (row * this._rowHeight) + (this._rowHeight / 2), this._layerLabelWidth);
             if (this._layerLabels[layerName] !== 0) {
                 this._canvas.fillStyle = COLOR_LINE;
-                this._canvas.fillRect(this._layerLabelWidth, row * this._rowHeight, this._timelineWidth, THICKNESS_LINE);
+                this._canvas.fillRect(this._layerLabelWidth, row * this._rowHeight, this._viewDrawWidth, THICKNESS_LINE);
             }
             row++;
         }
@@ -292,21 +317,21 @@ class TimelineVisualizer extends events_1.EventEmitter {
      * Draw a ruler on top of background
      */
     drawBackgroundRuler() {
-        const range = this._scaledDrawTimeRange;
-        const endTime = this._drawTimeStart + range;
+        const range = this.viewRange;
+        const endTime = this.viewEndTime;
         const circaNumberOfLines = 5;
         const rounder = Math.pow(10, Math.floor(Math.log10(range / circaNumberOfLines))); // What to round the ruler to
         const rounderNext = rounder * 10;
         const numberOfLines = Math.floor(range / rounder);
         const rulerDiff = rounder;
-        const startTime = Math.floor(this._drawTimeStart / rounder) * rounder;
+        const startTime = Math.floor(this._viewStartTime / rounder) * rounder;
         const opacity = (Math.min(1, circaNumberOfLines / numberOfLines));
         if (rulerDiff) {
             this._canvas.strokeStyle = RULER_LINE_COLOR;
             this._canvas.lineWidth = RULER_LINE_WIDTH;
             for (let rulerTime = startTime; rulerTime < endTime; rulerTime += rulerDiff) {
                 this._canvas.beginPath();
-                let x = this.getObjectOffsetFromTimelineStart(rulerTime);
+                let x = this.timeToXCoord(rulerTime);
                 let distanceToNext = (rulerTime / rounderNext) % 1;
                 if (distanceToNext > 0.5)
                     distanceToNext -= 1;
@@ -318,8 +343,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 else {
                     this._canvas.globalAlpha = opacity;
                 }
-                if (x >= 0) {
-                    x += this._timelineStart;
+                if (x >= this._viewDrawX) {
                     this._canvas.moveTo(x, 0);
                     this._canvas.lineTo(x, this._canvasHeight);
                 }
@@ -334,8 +358,10 @@ class TimelineVisualizer extends events_1.EventEmitter {
     drawPlayhead() {
         // If the playhead should be draw.
         if (this._drawPlayhead) {
-            this._canvas.fillStyle = COLOR_PLAYHEAD;
-            this._canvas.fillRect(this._playHeadPosition, 0, THICKNESS_PLAYHEAD, this._canvasHeight);
+            if (this.istimeInView(this._playHeadTime)) {
+                this._canvas.fillStyle = COLOR_PLAYHEAD;
+                this._canvas.fillRect(this.timeToXCoord(this._playHeadTime), 0, THICKNESS_PLAYHEAD, this._canvasHeight);
+            }
         }
     }
     /**
@@ -369,13 +395,12 @@ class TimelineVisualizer extends events_1.EventEmitter {
         this._canvas.clearRect(0, 0, this._canvasWidth, this._canvasHeight);
         this.drawBackground();
         this.drawLayerLabels();
-        // Find new playhead position.
-        this.computePlayheadPosition();
         // Recompute objects positions
         this._timelineState = this.getTimelineDrawState(this._resolvedStates);
         // Draw the current state.
         this.drawTimelineState(this._timelineState);
         this.drawPlayhead();
+        this.checkAutomaticReresolve();
     }
     /**
      * Draws a timeline state to the canvas.
@@ -437,11 +462,11 @@ class TimelineVisualizer extends events_1.EventEmitter {
         if (this.showOnTimeline(start, end)) {
             // Get object dimensions and position.
             let objectWidth = this.getObjectWidth(start, end);
-            let offset = this.getObjectOffsetFromTimelineStart(start);
+            let xCoord = this.capXcoordToView(this.timeToXCoord(start));
             let objectTop = this.getObjectOffsetFromTop(layer);
             // Set state properties.
             state.height = this._timelineObjectHeight;
-            state.left = this._timelineStart + offset;
+            state.left = xCoord;
             state.top = objectTop;
             state.width = objectWidth;
             state.visible = true;
@@ -453,15 +478,15 @@ class TimelineVisualizer extends events_1.EventEmitter {
      * @param {number} start start time of the object.
      * @returns {number} Offset in pixels.
      */
-    getObjectOffsetFromTimelineStart(start) {
-        // Calculate offset.
-        let offset = (start - this._drawTimeStart) * this._pixelsWidthPerUnitTime;
-        // Offset cannot be to the left of the timeline start position.
-        if (offset < 0) {
-            offset = 0;
-        }
-        return offset;
-    }
+    // private getObjectOffsetFromTimelineStart (start: number): number {
+    // 	// Calculate offset.
+    // 	let offset = (start - this._viewStartTime) * this.pixelsWidthPerUnitTime
+    // 	// Offset cannot be to the left of the timeline start position.
+    // 	if (offset < 0) {
+    // 		offset = 0
+    // 	}
+    // 	return offset
+    // }
     /**
      * Calculates the width, in pixels, of an object based on its duration.
      * @param {number} start Start time of the object.
@@ -472,13 +497,13 @@ class TimelineVisualizer extends events_1.EventEmitter {
         if (!endTime)
             return this._canvasWidth;
         // If the start time is less than the timeline start, set to timeline start.
-        if (startTime < this._drawTimeStart) {
-            startTime = this._drawTimeStart;
+        if (startTime < this._viewStartTime) {
+            startTime = this._viewStartTime;
         }
         // Calculate duration of the object remaining on the timeline.
         let duration = endTime - startTime;
         // Return end point position in pixels.
-        return duration * this._pixelsWidthPerUnitTime;
+        return duration * this.pixelsWidthPerUnitTime;
     }
     /**
      * Determines whether to show an object on the timeline.
@@ -487,8 +512,8 @@ class TimelineVisualizer extends events_1.EventEmitter {
      * @returns {true} if object should be shown on the timeline.
      */
     showOnTimeline(start, end) {
-        let isAfter = start >= this._drawTimeEnd;
-        let isBefore = (end || Infinity) <= this._drawTimeStart;
+        let isAfter = start >= this.viewEndTime;
+        let isBefore = (end || Infinity) <= this._viewStartTime;
         return !isAfter && !isBefore;
     }
     /**
@@ -510,57 +535,24 @@ class TimelineVisualizer extends events_1.EventEmitter {
             now - this._updateDrawLastTime :
             1) / 1000;
         this._updateDrawLastTime = now;
+        const deltaTime = this._playSpeed * dt;
         // Check playhead should be drawn.
-        let updatePlayhead = false;
-        let updateEverything = false;
+        let needRedraw = false;
         if (this._playHeadPlaying && this._drawPlayhead) {
-            // Add time to playhead.
-            this._playHeadTime += this._playSpeed * dt;
-            updatePlayhead = true;
-        }
-        if (this._playViewPort) {
-            let play = true;
-            if (this._playHeadPlaying && this._drawPlayhead) {
-                // Only play if playhead is visible
-                if (this._playHeadTime > this._drawTimeEnd ||
-                    this._playHeadTime < this._drawTimeStart) {
-                    play = false;
-                }
+            if (this._playViewPort &&
+                this.istimeInView(this._playHeadTime) // Only play if playhead is in view
+            ) {
+                this._viewStartTime += deltaTime;
             }
-            if (play) {
-                this._drawTimeStart += this._playSpeed * dt;
-                this._drawTimeEnd += this._playSpeed * dt;
-                updateEverything = true;
-            }
+            // Move playhead forward
+            this._playHeadTime += deltaTime;
+            needRedraw = true;
         }
-        if (updateEverything) {
+        if (needRedraw) {
             this.redrawTimeline();
-        }
-        else if (updatePlayhead) {
-            // Calculate new playhead position and redraw if the playhead has moved.
-            if (this.computePlayheadPosition()) {
-                this.redrawTimeline();
-            }
         }
         // call this function on next frame
         window.requestAnimationFrame(() => this.updateDraw());
-    }
-    /**
-     * Calulates the playhead position based on time.
-     * @returns true if the playhead has moved.
-     */
-    computePlayheadPosition() {
-        // Get playhead position.
-        let pos = this.timeToXCoord(this._playHeadTime);
-        if (pos < this._timelineStart) {
-            pos = this._timelineStart;
-        }
-        // Redraw if playhead has moved.
-        if (pos !== this._playHeadPosition) {
-            this._playHeadPosition = pos;
-            return true;
-        }
-        return false;
     }
     /**
      * Handles mouse down event.
@@ -640,7 +632,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
             let found = false;
             // Find the object that is currently hovered over.
             let mousePos = this.getMousePos(this._canvasContainer, event);
-            if (mousePos.x > this._timelineStart) {
+            if (mousePos.x > this._viewDrawX) {
                 if (mousePos.y < this._rowsTotalHeight) {
                     let selectedRow = Math.floor((mousePos.y / this._rowsTotalHeight) * this._numberOfLayers);
                     let layer;
@@ -696,26 +688,16 @@ class TimelineVisualizer extends events_1.EventEmitter {
         // Get mouse pointer coordinates on canvas.
         let canvasCoord = this.getMousePos(this._canvasContainer, event);
         // Don't scroll if mouse is not over timeline.
-        if (canvasCoord.x <= this._timelineStart) {
+        if (canvasCoord.x <= this._viewDrawX) {
             return;
         }
         let changed = false;
         // CTRL + scroll to zoom.
         if (event.ctrlKey === true) {
-            // If scrolling "up".
-            if (event.deltaY > 0) {
+            if (event.deltaY) {
                 changed = true;
-                // Zoom out.
-                this._timelineZoom = this._timelineZoom * Math.pow(ZOOM_FACTOR, Math.abs(event.deltaY));
-                // Zoom relative to cursor position.
-                this.zoomUnderCursor(canvasCoord.x);
-            }
-            else if (event.deltaY < 0) {
-                changed = true;
-                // Zoom in.
-                this._timelineZoom = this._timelineZoom / Math.pow(ZOOM_FACTOR, Math.abs(event.deltaY));
-                // Zoom relative to cursor position.
-                this.zoomUnderCursor(canvasCoord.x);
+                const zoomFactor = Math.pow(ZOOM_FACTOR, -event.deltaY);
+                this.zoomUnderCursor(canvasCoord.x, zoomFactor);
             }
         }
         else if (event.deltaX !== 0) { // Scroll on x-axis
@@ -742,98 +724,41 @@ class TimelineVisualizer extends events_1.EventEmitter {
      */
     canvasScrollByDeltaX(deltaX) {
         // Calculate new starting time.
-        let targetStart = this._drawTimeStart + (deltaX / this._pixelsWidthPerUnitTime);
+        let targetStart = this._viewStartTime + (deltaX / this.pixelsWidthPerUnitTime);
         // Starting time cannot be < 0.
         if (targetStart < 0) {
             targetStart = 0;
         }
         // Optimisation, don't redraw if nothing has changed.
-        if (targetStart === this._drawTimeStart) {
+        if (targetStart === this._viewStartTime) {
             return;
         }
-        // Calculate end point.
-        let targetEnd = targetStart + this._scaledDrawTimeRange;
-        // Update timeline start and end values.
-        this._drawTimeStart = targetStart;
-        this._drawTimeEnd = targetEnd;
-    }
-    /**
-     * Calculates the new scaled timeline start and end times according to the current zoom value.
-     */
-    updateScaledDrawTimeRange() {
-        this._scaledDrawTimeRange = this._drawTimeRange * (this._timelineZoom / 100);
-        // Calculate how many pixels are required per unit time.
-        this._pixelsWidthPerUnitTime = this._timelineWidth / (this._drawTimeEnd - this._drawTimeStart);
+        this._viewStartTime = targetStart;
     }
     /**
      * Zooms into/out of timeline, keeping the time under the cursor in the same position.
      * @param cursorX Position of mouse cursor.
      */
-    zoomUnderCursor(cursorX) {
-        // Get time under cursor.
-        let coordToTime = this.cursorPosToTime(cursorX);
-        // Calculate position of mouse relative to edges of timeline.
-        let ratio = this.getCursorPositionAcrossTimeline(cursorX);
-        // Set zoom values.
-        this.updateScaledDrawTimeRange();
-        // Calculate start and end values.
-        let targetStart = coordToTime - (ratio * this._scaledDrawTimeRange);
-        let targetEnd = targetStart + this._scaledDrawTimeRange;
-        // Start cannot be less than 0 but we must preserve the time range to draw.
+    zoomUnderCursor(cursorX, zoomFactor) {
+        // Point in time of the cursor
+        let cursorTime = this.xCoordToTime(cursorX);
+        // Ratio (in view range) of the cursor
+        let cursorRatio = this.timeToRatio(cursorTime);
+        // Change zoom:
+        this._timelineZoom = this._timelineZoom * zoomFactor;
+        // Limit within current view
+        cursorRatio = Math.max(0, Math.min(1, cursorRatio));
+        // Calculate start
+        let targetStart = cursorTime - (cursorRatio * this.viewRange);
+        // Start cannot be less than 0
         if (targetStart < 0) {
-            let diff = -targetStart;
             targetStart = 0;
-            targetEnd += diff;
         }
-        // Set draw times.
-        this._drawTimeStart = targetStart;
-        this._drawTimeEnd = targetEnd;
+        // Set draw time
+        this._viewStartTime = targetStart;
     }
     /**
-     * Gets the current time under the mouse cursor.
-     * @param cursorX Mouse cursor position (x-axis).
-     * @returns Time under cursor, or -1 if the cursor is not over the timeline.
-     */
-    cursorPosToTime(cursorX) {
-        // Check if over timeline.
-        if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
-            return -1;
-        }
-        let ratio = this.getCursorPositionAcrossTimeline(cursorX);
-        return this._drawTimeStart + (this._scaledDrawTimeRange * ratio);
-    }
-    /**
-     * Gets the position of the mouse cursor as a percentage of the width of the timeline.
-     * @param cursorX Mouse cursor position.
-     * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
-     */
-    getCursorPositionAcrossTimeline(cursorX) {
-        // Check if over timeline.
-        if (cursorX <= this._timelineStart || cursorX >= this._timelineStart + this._timelineWidth) {
-            return -1;
-        }
-        let diffX = cursorX - this._timelineStart;
-        let ratio = diffX / this._timelineWidth;
-        return ratio;
-    }
-    /**
-     * Calculates the X position of a time value.
-     * @param {number} time The time to convert.
-     * @returns {number} The X coordinate of the time.
-     */
-    timeToXCoord(time) {
-        // If playhead is off the canvas
-        if (time < this._drawTimeStart) {
-            return -1;
-        }
-        if (time > this._drawTimeEnd) {
-            return this._timelineWidth + this._timelineStart;
-        }
-        // (Proportion of time * timeline width) + layer label width
-        return ((time - this._drawTimeStart) / (this._drawTimeEnd - this._drawTimeStart) * this._timelineWidth) + this._timelineStart;
-    }
-    /**
-     * Gets the mouse position relative to the top-left of the canvas.
+     * Gets the mouse position relative to the top-left of the canvas [pixels]
      * @param canvas
      * @param evt
      * @returns {x: number, y: number} Position.
@@ -961,6 +886,87 @@ class TimelineVisualizer extends events_1.EventEmitter {
             };
         }
         return;
+    }
+    updateTimelineResolveWindow() {
+        const { start, end } = this.getExpandedStartEndTime(1);
+        this._timelineResolveStart = start;
+        this._timelineResolveEnd = end;
+        this._timelineResolveZoom = this._timelineZoom;
+        if (this.latestUpdateTime) {
+            // Calculate an optimal number of objects to create, so that the drawing still runs smoothly.
+            const targetResolveTime = 50; // ms
+            let ratio = targetResolveTime / this.latestUpdateTime;
+            this._timelineResolveCountAdjust = Math.max(0.1, Math.min(10, (1 + (this._timelineResolveCountAdjust * ratio)) / 2));
+        }
+    }
+    getExpandedStartEndTime(multiplier = 1) {
+        let start = this._viewStartTime;
+        let end = this.viewEndTime;
+        let duration = end - start;
+        let expand = duration * (this._timelineResolveExpand - 1) * multiplier;
+        start -= expand * 0.33;
+        end += expand * 0.66; // expand more into the future
+        start = Math.max(0, start);
+        end = Math.max(0, end);
+        const zoomDiff = Math.max(this._timelineResolveZoom, this._timelineZoom) /
+            Math.min(this._timelineResolveZoom, this._timelineZoom);
+        return { start, end, zoomDiff };
+    }
+    checkAutomaticReresolve() {
+        const { start, end, zoomDiff } = this.getExpandedStartEndTime(0.2);
+        if (this._timelineResolveAuto && (start < this._timelineResolveStart ||
+            end > this._timelineResolveEnd ||
+            zoomDiff > 3)) {
+            if (!this.reresolveTimeout) {
+                this.reresolveTimeout = setTimeout(() => {
+                    this.reresolveTimeout = null;
+                    this.updateTimelineResolveWindow();
+                    this._updateTimeline();
+                }, Math.max(100, this.latestUpdateTime * 5));
+            }
+        }
+    }
+    // --------------------- Conversions between position & time -------------
+    /**
+     * Calculate the X coordinate of a time value.
+     * @param {number} time The time to convert.
+     * @returns {number} The X coordinate of the time.
+     */
+    timeToXCoord(time) {
+        return this._viewDrawX + ((time - this._viewStartTime) * this.pixelsWidthPerUnitTime);
+    }
+    /**
+     * Calculate the time of a X coordinate.
+     * @param {number} time The X coordinate to convert.
+     * @returns {number} The time of the X coordinate.
+     */
+    xCoordToTime(position) {
+        return this._viewStartTime + ((position - this._viewDrawX) / this.pixelsWidthPerUnitTime);
+    }
+    /** Calculate the ratio of the time in current view (0 i beginning, 1 is end)  */
+    timeToRatio(time) {
+        return (time - this._viewStartTime) / this.viewRange;
+    }
+    /** Returns true if the position is within the current view  */
+    istimeInView(time) {
+        const ratio = this.timeToRatio(time);
+        return ratio >= 0 && ratio < 1;
+    }
+    capXcoordToView(position) {
+        return Math.max(this._viewDrawX, Math.min(this._viewDrawX + this._viewDrawWidth, position));
+    }
+    // -------------- Getters / Convenience functions ---------------------
+    /** Zoom factor [pixels / time] */
+    get pixelsWidthPerUnitTime() {
+        return (this._timelineZoom / 100);
+    }
+    /** The range of the view [time] */
+    get viewRange() {
+        return this._viewDrawWidth / this.pixelsWidthPerUnitTime;
+    }
+    /** The end time of the view [time] */
+    get viewEndTime() {
+        return this._viewStartTime + this.viewRange;
     }
 }
 exports.TimelineVisualizer = TimelineVisualizer;

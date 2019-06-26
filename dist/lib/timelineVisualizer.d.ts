@@ -78,43 +78,81 @@ export declare class TimelineVisualizer extends EventEmitter {
     stepSize: number;
     /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
     private readonly _layerLabelWidthProportionOfCanvas;
-    /** @private @readonly Default time range to display. */
-    private readonly _defaultDrawRange;
+    /** Timeline currently drawn. */
     private _resolvedStates;
+    /** Layers on timeline. */
     private _layerLabels;
+    /** State of the timeline. */
     private _timelineState;
+    /** Map of objects for determining hovered object */
     private _hoveredObjectMap;
+    /** Width of column of layer labels. */
     private _layerLabelWidth;
+    /** Canvas ID. */
     private _canvasId;
+    /** Canvas HTML container. */
     private _canvasContainer;
+    /** Canvas to draw to. */
     private _canvas;
+    /** Width of the canvas [pixels] */
     private _canvasWidth;
+    /** Height of the canvas [pixels] */
     private _canvasHeight;
+    /** Height of a timeline row [pixels] */
     private _rowHeight;
+    /** Height of all of the rows. */
     private _rowsTotalHeight;
+    /** Number of layers. */
     private _numberOfLayers;
-    private _timelineWidth;
-    private _timelineStart;
+    /** Width of the actual drawing-view within the canvas [pixels] */
+    private _viewDrawWidth;
+    /** Start of the drawing-view relative to the left of the canvas [pixels] */
+    private _viewDrawX;
+    /** Height of objects to draw [pixels] */
     private _timelineObjectHeight;
-    private _drawTimeStart;
-    private _drawTimeEnd;
-    private _drawTimeRange;
-    private _scaledDrawTimeRange;
-    private _pixelsWidthPerUnitTime;
+    /** Start time of the current view. Defines the objects within view on the timeline [time] */
+    private _viewStartTime;
+    /** Range of the current view [time] */
+    /** Store whether the mouse is held down, for scrolling. */
     private _mouseDown;
+    /** Last x positions of the mouse cursor (on click and on drag), for scrolling. */
     private _mouseLastX;
+    /** Last direction the user moved on the timeline, helps to smooth changing scroll direction. */
     private _lastScrollDirection;
+    /** Current zoom amount. */
     private _timelineZoom;
+    /** Whether or not the playhead should move. */
     private _playHeadPlaying;
+    /** Whether or not the viewport should move */
     private _playViewPort;
+    /** Whether to draw the playhead or not */
     private _drawPlayhead;
+    /** Speed of the playhead [units / second] */
     private _playSpeed;
+    /** The current time position of the playhead. */
     private _playHeadTime;
-    private _playHeadPosition;
+    /** The last time updateDraw() did a draw. */
     private _updateDrawLastTime;
+    /** The object currently being hovered over. */
     private _hoveredOver;
+    /** Whether the mouse last moved over an object or out. */
     private _lastHoverAction;
+    /** Name of object that was last hovered over. */
     private _lastHoveredName;
+    /** If the visualizer automatically should re-resolve the timeline when navigating the viewport */
+    private _timelineResolveAuto;
+    /** At what time the timeline was resolved [time] */
+    private _timelineResolveStart;
+    private _timelineResolveEnd;
+    private _timelineResolveZoom;
+    private _timelineResolveCount;
+    private _timelineResolveCountAdjust;
+    /** How much extra (outside the current viewport) the timeline should be resolved to [ratio] */
+    private _timelineResolveExpand;
+    private latestTimeline;
+    private latestUpdateTime;
+    private latestOptions;
+    private reresolveTimeout;
     /**
      * @param {string} canvasId The ID of the canvas object to draw within.
      */
@@ -130,6 +168,7 @@ export declare class TimelineVisualizer extends EventEmitter {
      * @param {ResolveOptions} options Resolve options.
      */
     updateTimeline(timeline: TimelineObject[], options?: ResolveOptions): void;
+    private _updateTimeline;
     /**
      * Sets the viewport to a position, zoom, and playback speed.
      * Playback speed currently not implemented.
@@ -195,7 +234,6 @@ export declare class TimelineVisualizer extends EventEmitter {
      * @param {number} start start time of the object.
      * @returns {number} Offset in pixels.
      */
-    private getObjectOffsetFromTimelineStart;
     /**
      * Calculates the width, in pixels, of an object based on its duration.
      * @param {number} start Start time of the object.
@@ -220,11 +258,6 @@ export declare class TimelineVisualizer extends EventEmitter {
      * Moves the playhead. Called periodically.
      */
     private updateDraw;
-    /**
-     * Calulates the playhead position based on time.
-     * @returns true if the playhead has moved.
-     */
-    private computePlayheadPosition;
     /**
      * Handles mouse down event.
      * @param event Mouse event.
@@ -251,34 +284,12 @@ export declare class TimelineVisualizer extends EventEmitter {
      */
     private canvasScrollByDeltaX;
     /**
-     * Calculates the new scaled timeline start and end times according to the current zoom value.
-     */
-    private updateScaledDrawTimeRange;
-    /**
      * Zooms into/out of timeline, keeping the time under the cursor in the same position.
      * @param cursorX Position of mouse cursor.
      */
     private zoomUnderCursor;
     /**
-     * Gets the current time under the mouse cursor.
-     * @param cursorX Mouse cursor position (x-axis).
-     * @returns Time under cursor, or -1 if the cursor is not over the timeline.
-     */
-    private cursorPosToTime;
-    /**
-     * Gets the position of the mouse cursor as a percentage of the width of the timeline.
-     * @param cursorX Mouse cursor position.
-     * @returns Cursor position relative to timeline width, or -1 if the cursor is not over the timeline.
-     */
-    private getCursorPositionAcrossTimeline;
-    /**
-     * Calculates the X position of a time value.
-     * @param {number} time The time to convert.
-     * @returns {number} The X coordinate of the time.
-     */
-    private timeToXCoord;
-    /**
-     * Gets the mouse position relative to the top-left of the canvas.
+     * Gets the mouse position relative to the top-left of the canvas [pixels]
      * @param canvas
      * @param evt
      * @returns {x: number, y: number} Position.
@@ -303,4 +314,30 @@ export declare class TimelineVisualizer extends EventEmitter {
      * @returns {TimelineObjectMetaData | undefined} Extracted metadata or undefined if the string does not contain the required values.
      */
     private timelineMetaFromString;
+    private updateTimelineResolveWindow;
+    private getExpandedStartEndTime;
+    private checkAutomaticReresolve;
+    /**
+     * Calculate the X coordinate of a time value.
+     * @param {number} time The time to convert.
+     * @returns {number} The X coordinate of the time.
+     */
+    private timeToXCoord;
+    /**
+     * Calculate the time of a X coordinate.
+     * @param {number} time The X coordinate to convert.
+     * @returns {number} The time of the X coordinate.
+     */
+    private xCoordToTime;
+    /** Calculate the ratio of the time in current view (0 i beginning, 1 is end)  */
+    private timeToRatio;
+    /** Returns true if the position is within the current view  */
+    private istimeInView;
+    private capXcoordToView;
+    /** Zoom factor [pixels / time] */
+    private readonly pixelsWidthPerUnitTime;
+    /** The range of the view [time] */
+    private readonly viewRange;
+    /** The end time of the view [time] */
+    private readonly viewEndTime;
 }
