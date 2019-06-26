@@ -251,6 +251,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/** At what time the timeline was resolved [time] */
 	private _timelineResolveStart: number = 0
 	private _timelineResolveEnd: number = 0
+	private _timelineResolveZoom: number = 1
 	private _timelineResolveCount: number = 100
 	private _timelineResolveCountAdjust: number = 1
 
@@ -1234,6 +1235,8 @@ export class TimelineVisualizer extends EventEmitter {
 		this._timelineResolveStart	= start
 		this._timelineResolveEnd	= end
 
+		this._timelineResolveZoom = this._timelineZoom
+
 		if (this.latestUpdateTime) {
 			// Calculate an optimal number of objects to create, so that the drawing still runs smoothly.
 
@@ -1241,7 +1244,9 @@ export class TimelineVisualizer extends EventEmitter {
 
 			let ratio = targetResolveTime / this.latestUpdateTime
 
-			this._timelineResolveCountAdjust = (1 + (this._timelineResolveCountAdjust * ratio)) / 2
+			this._timelineResolveCountAdjust = Math.max(0.1, Math.min(10,
+				(1 + (this._timelineResolveCountAdjust * ratio)) / 2
+			))
 		}
 	}
 	private getExpandedStartEndTime (multiplier: number = 1) {
@@ -1258,16 +1263,20 @@ export class TimelineVisualizer extends EventEmitter {
 		start	= Math.max(0, start)
 		end		= Math.max(0, end)
 
-		return { start, end }
+		const zoomDiff = Math.max(this._timelineResolveZoom, this._timelineZoom) /
+			Math.min(this._timelineResolveZoom, this._timelineZoom)
+
+		return { start, end, zoomDiff }
 	}
 	private checkAutomaticReresolve () {
 
-		const { start, end } = this.getExpandedStartEndTime(0.2)
+		const { start, end, zoomDiff } = this.getExpandedStartEndTime(0.2)
 
 		if (
 			this._timelineResolveAuto && (
 				start	< this._timelineResolveStart ||
-				end		> this._timelineResolveEnd
+				end		> this._timelineResolveEnd ||
+				zoomDiff > 3
 			)
 		) {
 			if (!this.reresolveTimeout) {
