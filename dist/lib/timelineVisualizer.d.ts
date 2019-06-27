@@ -11,6 +11,7 @@ export interface DrawState {
     left: number;
     top: number;
     visible: boolean;
+    title: string;
 }
 /**
  * Allows the viewort of the timeline to be set.
@@ -66,6 +67,9 @@ export interface HoverMapData {
     startX: number;
     endX: number;
     name: string;
+    objectRefId: string;
+    type: string;
+    instanceId: string;
 }
 /**
  * Stores a map of objects from the timeline displayed on the canvas.
@@ -138,7 +142,7 @@ export declare class TimelineVisualizer extends EventEmitter {
     /** Whether the mouse last moved over an object or out. */
     private _lastHoverAction;
     /** Name of object that was last hovered over. */
-    private _lastHoveredName;
+    private _lastHoveredHash;
     /** If the visualizer automatically should re-resolve the timeline when navigating the viewport */
     private _timelineResolveAuto;
     /** At what time the timeline was resolved [time] */
@@ -153,6 +157,7 @@ export declare class TimelineVisualizer extends EventEmitter {
     private latestUpdateTime;
     private latestOptions;
     private reresolveTimeout;
+    private _mergeIterator;
     /**
      * @param {string} canvasId The ID of the canvas object to draw within.
      */
@@ -217,7 +222,7 @@ export declare class TimelineVisualizer extends EventEmitter {
     private drawTimelineState;
     /**
      * Returns the draw states for all timeline objects.
-     * @param {ResolvedTimeline} timeline Timeline to draw.
+     * @param {ResolvedStates} timeline Timeline to draw.
      * @returns {TimelineDrawState} State of time-based objects.
      */
     private getTimelineDrawState;
@@ -308,12 +313,6 @@ export declare class TimelineVisualizer extends EventEmitter {
      * @returns {ResolvedTimeline} containing merged timelines.
      */
     private mergeTimelineObjects;
-    /**
-     * Gets metadata for a timeline object from a string representation.
-     * @param {string} meta Metadata string.
-     * @returns {TimelineObjectMetaData | undefined} Extracted metadata or undefined if the string does not contain the required values.
-     */
-    private timelineMetaFromString;
     private updateTimelineResolveWindow;
     private getExpandedStartEndTime;
     private checkAutomaticReresolve;
