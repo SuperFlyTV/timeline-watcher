@@ -1,14 +1,13 @@
 import * as isEqual from 'lodash.isequal'
-import * as merge from 'lodash.merge'
 
 import {
 	Resolver,
 	TimelineObject,
 	ResolveOptions,
-	ResolvedTimeline,
 	ResolvedTimelineObjects,
 	TimelineObjectInstance,
-	ResolvedTimelineObject
+	ResolvedTimelineObject,
+	ResolvedStates
 } from 'superfly-timeline'
 import { EventEmitter } from 'events'
 
@@ -86,6 +85,7 @@ export interface DrawState {
 	left: number
 	top: number
 	visible: boolean
+	title: string
 }
 
 /**
@@ -145,6 +145,9 @@ export interface HoverMapData {
 	startX: number
 	endX: number
 	name: string
+	objectRefId: string
+	type: string
+	instanceId: string
 }
 
 /**
@@ -161,7 +164,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
 
 	/** Timeline currently drawn. */
-	private _resolvedStates: ResolvedTimeline | undefined
+	private _resolvedStates: ResolvedStates | undefined
 	/** Layers on timeline. */
 	private _layerLabels: Layers = {}
 	/** State of the timeline. */
@@ -244,7 +247,7 @@ export class TimelineVisualizer extends EventEmitter {
 	/** Whether the mouse last moved over an object or out. */
 	private _lastHoverAction: number = MOUSEOUT
 	/** Name of object that was last hovered over. */
-	private _lastHoveredName: string = ''
+	private _lastHoveredHash: string = ''
 
 	/** If the visualizer automatically should re-resolve the timeline when navigating the viewport */
 	private _timelineResolveAuto: boolean = false
@@ -262,6 +265,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private latestUpdateTime: number = 0
 	private latestOptions: ResolveOptions
 	private reresolveTimeout: NodeJS.Timer | null = null
+	private _mergeIterator: number = 0
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -354,9 +358,9 @@ export class TimelineVisualizer extends EventEmitter {
 			// Move playhead to start time.
 			this._playHeadTime = this._viewStartTime
 		}
-		this._updateTimeline()
+		this._updateTimeline(true)
 	}
-	private _updateTimeline () {
+	private _updateTimeline (fromNewTimeline: boolean = false) {
 
 		const options2 = {
 			...this.latestOptions
@@ -369,29 +373,26 @@ export class TimelineVisualizer extends EventEmitter {
 			options2.limitCount = Math.ceil(this._timelineResolveCount * this._timelineResolveCountAdjust)
 		}
 
+		// If the playhead is being drawn, the resolve time should be at the playhead time.
+		if (this._drawPlayhead && this._playHeadTime > options2.time) {
+			options2.time = this._playHeadTime
+		}
+
 		// Resolve the timeline.
 		const startResolve = Date.now()
 		const resolvedTimeline = Resolver.resolveTimeline(this.latestTimeline, options2)
-		const newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
+		let newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
 
 		if (this._resolvedStates === undefined) { // If first time this runs
 			this._resolvedStates = newResolvedStates
 		} else {
-			// If the playhead is being drawn, the resolve time should be at the playhead time.
-			if (this._drawPlayhead) {
-				options2.time = this._playHeadTime
-			}
 
 			if (this._drawPlayhead) {
 				// Trim the current timeline:
 				if (newResolvedStates) {
-					this._resolvedStates = this.trimTimeline(
-						this._resolvedStates,
-						{ end: this._playHeadTime }
-					)
 
 					// Merge the timelines.
-					this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates)
+					this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates, fromNewTimeline)
 				}
 			} else {
 				// Otherwise we only see one timeline at a time.
@@ -509,6 +510,7 @@ export class TimelineVisualizer extends EventEmitter {
 		let row = 0
 		// Iterate through layers.
 		for (let layerName of Object.keys(this._layerLabels)) {
+
 			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
 			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
 
@@ -602,18 +604,15 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	private getLayersToDraw () {
 		this._hoveredObjectMap = {}
-		let layersArray: string[] = []
-		if (this._resolvedStates) {
-			for (let _j = 0; _j < Object.keys(this._resolvedStates.layers).length; _j++) {
-				let layer: string = Object.keys(this._resolvedStates.layers)[_j]
+		const layersArray: string[] = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : []
 
-				if (layersArray.indexOf(layer) === -1) {
-					layersArray.push(layer)
-				}
-			}
-		}
+		layersArray.sort((a, b) => {
+			if (a > b) return 1
+			if (a < b) return 1
+			return 0
+		})
 
-		let layers: Layers = {}
+		const layers: Layers = {}
 
 		layersArray.forEach((layerName, index) => {
 			layers[layerName] = index
@@ -651,48 +650,52 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	private drawTimelineState (currentDrawState: TimelineDrawState) {
 		for (let element in currentDrawState) {
-			if (currentDrawState[element].visible) {
+			const drawState = currentDrawState[element]
+			if (drawState.visible) {
 				this._canvas.fillStyle = COLOR_TIMELINE_OBJECT_FILL
-				this._canvas.fillRect(currentDrawState[element].left, currentDrawState[element].top, currentDrawState[element].width, currentDrawState[element].height)
+				this._canvas.fillRect(drawState.left, drawState.top, drawState.width, drawState.height)
 
 				this._canvas.strokeStyle = COLOR_TIMELINE_OBJECT_BORDER
 				this._canvas.lineWidth = THICKNESS_TIMELINE_OBJECT_BORDER
-				this._canvas.strokeRect(currentDrawState[element].left, currentDrawState[element].top, currentDrawState[element].width, currentDrawState[element].height)
+				this._canvas.strokeRect(drawState.left, drawState.top, drawState.width, drawState.height)
 
 				this._canvas.fillStyle = TEXT_COLOR
 				this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 				this._canvas.textBaseline = 'top'
-				this._canvas.fillText(element.split(':')[1], currentDrawState[element].left, currentDrawState[element].top)
+				this._canvas.fillText(drawState.title, drawState.left, drawState.top)
 			}
 		}
 	}
 
 	/**
 	 * Returns the draw states for all timeline objects.
-	 * @param {ResolvedTimeline} timeline Timeline to draw.
+	 * @param {ResolvedStates} timeline Timeline to draw.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	private getTimelineDrawState (timeline: ResolvedTimeline | undefined): TimelineDrawState {
+	private getTimelineDrawState (timeline: ResolvedStates | undefined): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 		if (timeline) {
-			for (let key in timeline.objects) {
-				let timeObj = timeline.objects[key]
-				let parentID = timeObj.id
+			for (let objId in timeline.objects) {
+				let timelineObj = timeline.objects[objId]
 
-				for (let _i = 0; _i < timeObj.resolved.instances.length; _i++) {
-					let instanceObj = timeObj.resolved.instances[_i]
-					let name = 'timelineObject:' + parentID + ':' + instanceObj.id
+				for (let _i = 0; _i < timelineObj.resolved.instances.length; _i++) {
+					let instanceObj = timelineObj.resolved.instances[_i]
+					let name = 'timelineObject:' + objId + ':' + instanceObj.id
 
 					currentDrawState[name] = this.createStateForObject(
-						timeObj.layer + '',
+						timelineObj,
 						instanceObj.start,
 						instanceObj.end
 					)
 
 					if (currentDrawState[name].visible === true) {
-						this._hoveredObjectMap[timeObj.layer + ''].push({
+						if (!this._hoveredObjectMap[timelineObj.layer + '']) this._hoveredObjectMap[timelineObj.layer + ''] = []
+						this._hoveredObjectMap[timelineObj.layer + ''].push({
 							startX: currentDrawState[name].left,
 							endX: currentDrawState[name].left + currentDrawState[name].width,
+							objectRefId: objId,
+							instanceId: instanceObj.id,
+							type: 'timelineObject',
 							name: name
 						})
 					}
@@ -710,16 +713,23 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param {number} end End time.
 	 * @returns {DrawState} State of the object to draw.
 	 */
-	private createStateForObject (layer: string, start: number, end: number | null): DrawState {
+	private createStateForObject (obj: ResolvedTimelineObject, start: number, end: number | null): DrawState {
 		// Default state (hidden).
-		let state: DrawState = { height: 0, left: 0, top: 0, width: 0, visible: false }
+		let state: DrawState = {
+			height: 0,
+			left: 0,
+			top: 0,
+			width: 0,
+			visible: false,
+			title: 'N/A'
+		}
 		// State should be default if the object is not being shown.
 		if (this.showOnTimeline(start, end)) {
 			// Get object dimensions and position.
 			let objectWidth = this.getObjectWidth(start, end)
 			let xCoord = this.capXcoordToView(this.timeToXCoord(start))
 
-			let objectTop = this.getObjectOffsetFromTop(layer)
+			let objectTop = this.getObjectOffsetFromTop(obj.layer + '')
 
 			// Set state properties.
 			state.height = this._timelineObjectHeight
@@ -727,6 +737,7 @@ export class TimelineVisualizer extends EventEmitter {
 			state.top = objectTop
 			state.width = objectWidth
 			state.visible = true
+			state.title = obj.id
 		}
 
 		return state
@@ -937,34 +948,37 @@ export class TimelineVisualizer extends EventEmitter {
 						if (object.startX <= mousePos.x && object.endX >= mousePos.x) {
 							found = true
 
-							if (this._lastHoveredName !== object.name) {
+							const hoverHash = object.type + object.objectRefId + object.instanceId // hash-ish
+							if (
+								this._lastHoveredHash !== hoverHash
+							) {
 								// Get object metadata from the object name of the hovered object.
-								let meta = this.timelineMetaFromString(object.name)
 
 								// If we are hovering over a timeline object.
-								if (meta !== undefined && meta.type === 'timelineObject') {
+								if (object.type === 'timelineObject') {
 									// Get the timeline object and the instance being hovered over.
 									if (this._resolvedStates) {
-										let timelineObject = this._resolvedStates.objects[meta.name]
+										let timelineObject = this._resolvedStates.objects[object.objectRefId]
 
-										let instance = timelineObject.resolved.instances.find(instance => instance.id === (meta as TimelineObjectMetaData).instance) as TimelineObjectInstance
+										let instance = timelineObject.resolved.instances.find(instance => instance.id === object.instanceId)
+										if (instance) {
+											// Construct hover info.
+											let hoverInfo: HoveredObject = {
+												object: timelineObject,
+												instance: instance,
+												pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
+											}
 
-										// Construct hover info.
-										let hoverInfo: HoveredObject = {
-											object: timelineObject,
-											instance: instance,
-											pointer: { xPostion: mousePos.x, yPosition: mousePos.y }
+											// Set currently hovered object.
+											this._hoveredOver = hoverInfo
+
+											// Emit event.
+											this.emit('timeline:hover', { detail: this._hoveredOver })
+
 										}
-
-										// Set currently hovered object.
-										this._hoveredOver = hoverInfo
-
-										// Emit event.
-										this.emit('timeline:hover', { detail: this._hoveredOver })
-
 										// Store last items.
 										this._lastHoverAction = MOUSEIN
-										this._lastHoveredName = object.name
+										this._lastHoveredHash = hoverHash
 									}
 								}
 							}
@@ -1097,13 +1111,14 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param timeline Timeline to trim.
 	 * @param trim Times to trim between.
 	 */
-	private trimTimeline (timeline: ResolvedTimeline, trim: TrimProperties): ResolvedTimeline {
+	private trimTimeline (timeline: ResolvedStates, trim: TrimProperties): ResolvedStates {
 		// The new resolved objects.
 		let newObjects: ResolvedTimelineObjects = {}
 
 		// Iterate through resolved objects.
 		Object.keys(timeline.objects).forEach((objId: string) => {
 			const obj = timeline.objects[objId]
+			const resultingInstances: TimelineObjectInstance[] = []
 			obj.resolved.instances.forEach(instance => {
 				// Whether to insert this object into the new timeline.
 				let useInstance = false
@@ -1131,41 +1146,44 @@ export class TimelineVisualizer extends EventEmitter {
 						}
 					}
 				}
+				if (!trim.start && !trim.end) {
+					useInstance = true
+				}
 
 				if (
 					useInstance &&
 					newInstance.start < (newInstance.end || Infinity)
 				) {
-					// If there isn't a resolved object for the new instance, create it.
-					if (Object.keys(newObjects).indexOf(objId) === -1) {
-						let newObject: ResolvedTimelineObject = {
-							content: obj.content,
-							enable: obj.enable,
-							id: obj.id,
-							layer: obj.layer,
-							resolved: {
-								instances: [
-									newInstance
-								],
-								levelDeep: obj.resolved.levelDeep,
-								resolved: obj.resolved.resolved,
-								resolving: obj.resolved.resolving
-							}
-						}
-						newObjects[objId] = newObject
-					} else {
-						newObjects[objId].resolved.instances.push(newInstance)
-					}
+					resultingInstances.push(newInstance)
 				}
 			})
+			// If there isn't a resolved object for the new instance, create it.
+			if (!newObjects[objId]) {
+				let newObject: ResolvedTimelineObject = {
+					content: obj.content,
+					enable: obj.enable,
+					id: obj.id,
+					layer: obj.layer,
+					resolved: {
+						instances: [],
+						levelDeep: obj.resolved.levelDeep,
+						resolved: obj.resolved.resolved,
+						resolving: obj.resolved.resolving
+					}
+				}
+				newObjects[objId] = newObject
+			}
+			newObjects[objId].resolved.instances = resultingInstances
 		})
 
 		return {
-			classes: timeline.classes,
-			layers: timeline.layers,
-			objects: newObjects,
-			options: timeline.options,
-			statistics: timeline.statistics
+			classes:	timeline.classes,
+			layers:		timeline.layers,
+			objects:	newObjects,
+			options:	timeline.options,
+			statistics:	timeline.statistics,
+			state:		timeline.state,
+			nextEvents:	timeline.nextEvents
 		}
 	}
 
@@ -1175,60 +1193,138 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param present Newer timeline.
 	 * @returns {ResolvedTimeline} containing merged timelines.
 	 */
-	private mergeTimelineObjects (past: ResolvedTimeline, present: ResolvedTimeline) {
-		// Iterate over objects in the first timeline.
-		Object.keys(past.objects).forEach((objId: string) => {
-			const pastObj = past.objects[objId]
-			// If an object exists in both timelines,
-			if (objId in present.objects) {
+	private mergeTimelineObjects (past: ResolvedStates, present: ResolvedStates, fromNewTimeline: boolean): ResolvedStates {
+		const resultingObjects: ResolvedTimelineObjects = {}
+		if (fromNewTimeline) {
+			past = this.trimTimeline(
+				past,
+				{ end: this._playHeadTime }
+			)
+			present = this.trimTimeline(
+				present,
+				{ start: this._playHeadTime }
+			)
+			// Because we want to keep old objects, this iterator is used to create unique old ids for them
+			this._mergeIterator++
+
+			Object.keys(past.objects).forEach((objId: string) => {
+				const pastObj = past.objects[objId]
+
+				// @ts-ignore: hack to mark it as a "past object"
+				if (pastObj.__pastObj) {
+					// Copy over it right away, it's old. Don't do anything else
+					resultingObjects[objId] = pastObj
+					return
+				}
+
+				// If an object exists in both timelines
 				const presentObj = present.objects[objId]
+				if (presentObj) {
+					if (
+						// Compare the objects, only look into merging them if they look identical
+						isEqual(
+							Object.assign({}, pastObj, { resolved: null }),
+							Object.assign({}, presentObj, { resolved: null }),
+						)
+					) {
 
-				if (
-					// Compare the objects, only look into merging them if they look identical
-					isEqual(
-						Object.assign({}, pastObj, { resolved: null }),
-						Object.assign({}, presentObj, { resolved: null }),
-					)
-				) {
-					// Iterate over all instances of those objects.
-					pastObj.resolved.instances.forEach(pastInstance => {
+						// This assumes that all past instances stop at a certain time at the very latest,
+						// and that all new instances start at that time at the very earliest.
+
+						// Iterate over all instances of those objects.
+						const allInstances: {[endTime: string]: TimelineObjectInstance } = {}
+						pastObj.resolved.instances.forEach(pastInstance => {
+							allInstances[pastInstance.end + ''] = pastInstance
+						})
 						presentObj.resolved.instances.forEach(presentInstance => {
-							// If the instances are next to each other, merge them.
-							if (pastInstance.end === presentInstance.start) {
-								presentInstance.start = pastInstance.start
-
-								// Remove the older instance.
-								pastObj.resolved.instances.splice(
-									pastObj.resolved.instances.indexOf(presentInstance),
-									1
-								)
+							if (allInstances[presentInstance.start + '']) {
+								// The instances are next to each other, merge them into one:
+								allInstances[presentInstance.start + ''].end = presentInstance.end
+							} else {
+								allInstances[presentInstance.start + ''] = presentInstance
 							}
 						})
-					})
+						presentObj.resolved.instances = []
+						Object.keys(allInstances).forEach(key => {
+							const instance = allInstances[key]
+							presentObj.resolved.instances.push(instance)
+						})
+
+						// Copy over the new object
+						resultingObjects[objId] = presentObj
+
+						return // don't copy over old object
+					} else {
+						// The objects doesn't look identical
+						// Copy over the new object
+						resultingObjects[objId] = presentObj
+					}
+				} else {
+					// The old object doesn't exist in the new timeline
 				}
-			}
-		})
-		return merge(past, present)
-	}
 
-	/**
-	 * Gets metadata for a timeline object from a string representation.
-	 * @param {string} meta Metadata string.
-	 * @returns {TimelineObjectMetaData | undefined} Extracted metadata or undefined if the string does not contain the required values.
-	 */
-	private timelineMetaFromString (meta: string): TimelineObjectMetaData | undefined {
-		let metaArray = meta.split(':')
+				// @ts-ignore: hack to mark it as a "past object"
+				pastObj.__pastObj = true
+				// Copy over the old object
+				resultingObjects[this._mergeIterator + '__' + objId] = pastObj
+			})
+			// Iterate over the next objects
+			Object.keys(present.objects).forEach((objId: string) => {
+				const presentObj = present.objects[objId]
 
-		if (metaArray.length === 3) {
-			return {
-				type: metaArray[0],
-				name: metaArray[1],
-				instance: metaArray[2]
-			}
+				if (!past.objects[objId]) { // (if it did existed in the past, it has already been handled)
+					// Just copy over the new object
+					resultingObjects[objId] = presentObj
+				}
+			})
+		} else {
+			// No new timeline, objects and instances are only added
+
+			Object.keys(past.objects).forEach((objId: string) => {
+				const pastObj = past.objects[objId]
+				resultingObjects[objId] = pastObj
+			})
+
+			Object.keys(present.objects).forEach((objId: string) => {
+				const presentObj = present.objects[objId]
+
+				const existingObj = resultingObjects[objId]
+				if (existingObj) {
+					// merge with old instances
+					const existingInstances: {[key: string]: true} = {}
+
+					existingObj.resolved.instances.forEach(instance => {
+						existingInstances[instance.start + '_' + instance.end] = true
+					})
+					presentObj.resolved.instances.forEach(instance => {
+						// Only push instances that aren't already present:
+						if (!existingInstances[instance.start + '_' + instance.end]) {
+							existingObj.resolved.instances.push(instance)
+						}
+					})
+				} else {
+					resultingObjects[objId] = presentObj
+				}
+			})
 		}
 
-		return
+		const resultingLayers: ResolvedStates['layers'] = {}
+		Object.keys(resultingObjects).forEach(key => {
+			const obj = resultingObjects[key]
+			const layer = obj.layer + ''
+			if (!resultingLayers[layer]) resultingLayers[layer] = []
+
+			resultingLayers[layer].push(key)
+
+		})
+
+		return {
+			...present,
+			objects: resultingObjects,
+			layers: resultingLayers
+		}
 	}
+
 	private updateTimelineResolveWindow () {
 		const { start, end } = this.getExpandedStartEndTime(1)
 
