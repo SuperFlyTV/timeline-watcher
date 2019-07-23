@@ -561,7 +561,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 		this._canvas.textBaseline = 'middle'
 		this._canvas.textAlign = 'right'
-		this._canvas.fillText(Math.round(this._drawTimeStart) + '', this._timelineStart, RULER_HEADER_HEIGHT / 2)
+		this._canvas.fillText(Math.round(this._viewStartTime) + '', this._timelineStart, RULER_HEADER_HEIGHT / 2)
 
 		this.drawBackgroundRuler()
 	}
