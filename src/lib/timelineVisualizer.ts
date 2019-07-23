@@ -202,10 +202,6 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/** Width of the actual drawing-view within the canvas [pixels] */
 	private _viewDrawWidth: number
-	// Width of the actual timeline within the canvas, in pixels.
-	private _timelineWidth: number
-	// Start and end of the timeline relative to the left of the canvas, in pixels.
-	private _timelineStart: number
 	// Timeline offset from top of canvas, in pixels.
 	private _timelineTop: number
 	// Height of timeline, in pixels.
@@ -298,8 +294,6 @@ export class TimelineVisualizer extends EventEmitter {
 		// Calculate timeline width and start point.
 		this._viewDrawX = this._layerLabelWidth
 		this._viewDrawWidth = this._canvasWidth - this._layerLabelWidth
-		this._timelineWidth = this._canvasWidth - this._layerLabelWidth
-		this._timelineStart = this._layerLabelWidth
 		this._timelineTop = RULER_HEADER_HEIGHT
 		this._timelineHeight = this._canvasHeight - this._timelineTop
 
@@ -538,7 +532,7 @@ export class TimelineVisualizer extends EventEmitter {
 
 			if (this._layerLabels[layerName] !== 0) {
 				this._canvas.fillStyle = COLOR_LINE
-				this._canvas.fillRect(this._layerLabelWidth, this._timelineTop + (row * this._rowHeight), this._timelineWidth, THICKNESS_LINE)
+				this._canvas.fillRect(this._layerLabelWidth, this._timelineTop + (row * this._rowHeight), this._viewDrawWidth, THICKNESS_LINE)
 			}
 
 			row++
@@ -561,7 +555,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 		this._canvas.textBaseline = 'middle'
 		this._canvas.textAlign = 'right'
-		this._canvas.fillText(Math.round(this._viewStartTime) + '', this._timelineStart, RULER_HEADER_HEIGHT / 2)
+		this._canvas.fillText(Math.round(this._viewStartTime) + '', this._viewDrawX, RULER_HEADER_HEIGHT / 2)
 
 		this.drawBackgroundRuler()
 	}
@@ -612,7 +606,7 @@ export class TimelineVisualizer extends EventEmitter {
 				if (x >= this._viewDrawX) {
 					const drawText = (x >= 50 && this._canvas.globalAlpha === 1)
 
-					x += this._timelineStart
+					x += this._viewDrawX
 					this._canvas.moveTo(x, 0)
 					this._canvas.lineTo(x, this._canvasHeight)
 
