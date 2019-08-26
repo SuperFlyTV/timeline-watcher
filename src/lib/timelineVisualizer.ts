@@ -155,6 +155,19 @@ export interface HoverMapData {
 	type: string
 	instanceId: string
 }
+/** A Marker is something that points out and displays a specific point in time */
+export interface Marker {
+	time: number
+	style: MarkerStyle
+}
+export interface MarkerStyle {
+	/** Color of the marker */
+	color?: string
+	/** Width of the marker */
+	width?: number
+	/** Text to be displayed */
+	label?: string
+}
 
 /**
  * Stores a map of objects from the timeline displayed on the canvas.
@@ -281,6 +294,7 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/** If null: all display all layers, otherwise hide layers defined in here */
 	private _hideLayers: HideLayers = {}
+	private _markers: Marker[] = []
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -510,6 +524,15 @@ export class TimelineVisualizer extends EventEmitter {
 			this.redrawTimeline()
 		}
 	}
+	/** Adds a vertical marker at a certain time */
+	public addMarker (time?: number, style?: MarkerStyle) {
+		if (!time) time = this._playHeadTime
+
+		this._markers.push({
+			time: time,
+			style: style || {}
+		})
+	}
 	/**
 	 * Calculates the height to give to each row to fit all layers on screen.
 	 * @param {String[]} layers Map of layers to use.
@@ -581,6 +604,28 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.fillText(this.formatTime(this._viewStartTime) , this._viewDrawX, RULER_HEADER_HEIGHT / 2)
 
 		this.drawBackgroundRuler()
+	}
+	private drawMarkers () {
+
+		for (let marker of this._markers) {
+
+			if (this.istimeInView(marker.time)) {
+				let x = this.timeToXCoord(marker.time)
+
+				this._canvas.fillStyle = marker.style.color || 'rgba(255, 0, 0, 0.7)'
+
+				this._canvas.fillRect(x, 0, marker.style.width || 3, this._canvasHeight)
+
+				if (marker.style.label) {
+					this._canvas.fillStyle = marker.style.color || TEXT_COLOR
+					this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
+					this._canvas.textBaseline = 'middle'
+					this._canvas.textAlign = 'left'
+					this._canvas.fillText(marker.style.label , x, RULER_HEADER_HEIGHT / 2)
+				}
+			}
+		}
+
 	}
 
 	/**
@@ -692,6 +737,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.clearRect(0, 0, this._canvasWidth, this._canvasHeight)
 		this.drawBackground()
 		this.drawTimeLabels()
+		this.drawMarkers()
 		this.drawLayerLabels()
 
 		// Recompute objects positions
