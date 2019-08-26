@@ -606,7 +606,6 @@ export class TimelineVisualizer extends EventEmitter {
 				if (x >= this._viewDrawX) {
 					const drawText = (x >= 50 && this._canvas.globalAlpha === 1)
 
-					x += this._viewDrawX
 					this._canvas.moveTo(x, 0)
 					this._canvas.lineTo(x, this._canvasHeight)
 
