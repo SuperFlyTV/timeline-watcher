@@ -109,7 +109,9 @@ export interface ViewPort {
 	/** The speed to use when playing */
 	playSpeed?: number
 }
-
+export interface HideLayers {
+	[layer: string]: true // Layers in here will NOT be shown
+}
 export interface TimelineVisualizerOptions {
 	/** Whether to draw the playhead or not */
 	drawPlayhead?: boolean
@@ -276,6 +278,9 @@ export class TimelineVisualizer extends EventEmitter {
 	private latestOptions: ResolveOptions
 	private reresolveTimeout: NodeJS.Timer | null = null
 	private _mergeIterator: number = 0
+
+	/** If null: all display all layers, otherwise hide layers defined in here */
+	private _hideLayers: HideLayers = {}
 
 	/**
 	 * @param {string} canvasId The ID of the canvas object to draw within.
@@ -488,6 +493,23 @@ export class TimelineVisualizer extends EventEmitter {
 		return this._hoveredOver
 	}
 
+	public setHideLayers (hideLayers: HideLayers) {
+		this._hideLayers = hideLayers
+
+		this.redrawTimeline()
+	}
+	public hideLayer (layer: string) {
+		if (!this._hideLayers[layer]) {
+			this._hideLayers[layer] = true
+			this.redrawTimeline()
+		}
+	}
+	public displayLayer (layer: string) {
+		if (this._hideLayers[layer]) {
+			delete this._hideLayers[layer]
+			this.redrawTimeline()
+		}
+	}
 	/**
 	 * Calculates the height to give to each row to fit all layers on screen.
 	 * @param {String[]} layers Map of layers to use.
@@ -514,7 +536,6 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
 		}
 	}
-
 	/**
 	 * Draws the layer labels to the canvas.
 	 */
@@ -639,7 +660,11 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	private getLayersToDraw () {
 		this._hoveredObjectMap = {}
-		const layersArray: string[] = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : []
+		const layersArray: string[] = (
+			this._resolvedStates ?
+			Object.keys(this._resolvedStates.layers) :
+			[]
+		).filter((layer) => !this._hideLayers[layer])
 
 		layersArray.sort((a, b) => {
 			if (a > b) return 1
