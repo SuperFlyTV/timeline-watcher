@@ -12,6 +12,9 @@
         var visuals = new TimelineVisualizer.TimelineVisualizer('timeline', {
 			drawPlayhead: true,
 		})
+		visuals.formatTime = (time) => {
+			return 'Time: ' + Math.round(time)
+		}
 
         var timeline = [
 			{

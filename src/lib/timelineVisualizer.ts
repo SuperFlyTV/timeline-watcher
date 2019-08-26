@@ -164,6 +164,8 @@ export class TimelineVisualizer extends EventEmitter {
 	// Step size.
 	public stepSize: number = DEFAULT_STEP_SIZE
 
+	public formatTime: (time: number) => string = (time) => Math.floor(time) + ''
+
 	/** @private @readonly Proportion of the canvas to be used for the layer labels column. */
 	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
 
@@ -547,7 +549,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.fillRect(0, 0, this._canvasWidth, this._canvasHeight)
 	}
 
-	private drawTimeLabels() {
+	private drawTimeLabels () {
 		this._canvas.fillStyle = COLOR_RULER_HEADER
 		this._canvas.fillRect(0, 0, this._canvasWidth, RULER_HEADER_HEIGHT)
 
@@ -555,7 +557,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._canvas.font = TEXT_FONT_SIZE.toString() + 'px ' + TEXT_FONT_FAMILY
 		this._canvas.textBaseline = 'middle'
 		this._canvas.textAlign = 'right'
-		this._canvas.fillText(Math.round(this._viewStartTime) + '', this._viewDrawX, RULER_HEADER_HEIGHT / 2)
+		this._canvas.fillText(this.formatTime(this._viewStartTime) , this._viewDrawX, RULER_HEADER_HEIGHT / 2)
 
 		this.drawBackgroundRuler()
 	}
@@ -610,7 +612,7 @@ export class TimelineVisualizer extends EventEmitter {
 					this._canvas.lineTo(x, this._canvasHeight)
 
 					if (drawText) {
-						this._canvas.fillText(rulerTime + '', x, RULER_HEADER_HEIGHT / 2)
+						this._canvas.fillText(this.formatTime(rulerTime), x, RULER_HEADER_HEIGHT / 2)
 					}
 				}
 				this._canvas.stroke()
