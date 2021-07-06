@@ -838,7 +838,8 @@ class TimelineVisualizer extends events_1.EventEmitter {
                         instances: [],
                         levelDeep: obj.resolved.levelDeep,
                         resolved: obj.resolved.resolved,
-                        resolving: obj.resolved.resolving
+                        resolving: obj.resolved.resolving,
+                        directReferences: obj.resolved.directReferences,
                     }
                 };
                 newObjects[objId] = newObject;
