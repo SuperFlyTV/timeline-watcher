@@ -78,7 +78,7 @@
     "@types/jest": "^24.0.9",
     "@types/node": "^8.0.4",
     "browserify": "^16.2.3",
-    "codecov": "^3.2.0",
+    "codecov": "^3.8.3",
     "cpx": "^1.5.0",
     "gh-pages": "^2.0.1",
     "gulp": "^4.0.0",
@@ -93,7 +93,7 @@
     "nyc": "^13.3.0",
     "opn-cli": "^4.0.0",
     "sleep-ms": "^2.0.1",
-    "standard-version": "^5.0.1",
+    "standard-version": "^8.0.1",
     "trash-cli": "^1.4.0",
     "ts-jest": "^24.0.0",
     "tslint": "^5.13.1",
@@ -114,7 +114,7 @@
   "dependencies": {
     "fabric": "^2.6.0",
     "lodash.isequal": "^4.5.0",
-    "lodash.merge": "^4.6.1",
+    "lodash.merge": "^4.6.2",
     "superfly-timeline": "^8.2.8"
   }
 }
