@@ -3457,8 +3457,8 @@ var EventType;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateKeyframe = exports.validateObject = exports.validateTimeline = exports.Resolver = void 0;
 const tslib_1 = require("tslib");
-tslib_1.__exportStar(require("./api/enums"), exports);
-tslib_1.__exportStar(require("./api/api"), exports);
+(0, tslib_1.__exportStar)(require("./api/enums"), exports);
+(0, tslib_1.__exportStar)(require("./api/api"), exports);
 var resolver_1 = require("./resolver/resolver");
 Object.defineProperty(exports, "Resolver", { enumerable: true, get: function () { return resolver_1.Resolver; } });
 var validate_1 = require("./resolver/validate");
@@ -3469,7 +3469,7 @@ Object.defineProperty(exports, "validateKeyframe", { enumerable: true, get: func
 },{"./api/api":5,"./api/enums":6,"./resolver/resolver":12,"./resolver/validate":14,"tslib":15}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cacheResult = exports.applyParentInstances = exports.setInstanceStartTime = exports.setInstanceEndTime = exports.resetId = exports.getId = exports.joinCaps = exports.addCapsToResuming = exports.joinReferences = exports.isReference = exports.capInstances = exports.applyRepeatingInstances = exports.operateOnArrays = exports.invertInstances = exports.convertEventsToInstances = exports.cleanInstances = exports.sortEvents = exports.isNumeric = exports.isConstant = exports.extendMandadory = void 0;
+exports.cleanCacheResult = exports.cacheResult = exports.applyParentInstances = exports.setInstanceStartTime = exports.setInstanceEndTime = exports.resetId = exports.getId = exports.joinCaps = exports.addCapsToResuming = exports.joinReferences = exports.isReference = exports.capInstances = exports.applyRepeatingInstances = exports.operateOnArrays = exports.invertInstances = exports.convertEventsToInstances = exports.cleanInstances = exports.sortEvents = exports.isNumeric = exports.isConstant = exports.extendMandadory = void 0;
 const _ = require("underscore");
 /**
  * Somewhat like _.extend, but with strong types & mandated additional properties
@@ -3525,12 +3525,8 @@ function cleanInstances(instances, allowMerge, allowZeroGaps = false) {
     // First, optimize for certain common situations:
     if (instances.length === 0)
         return [];
-    if (instances.length <= 1) {
-        const instance = instances[0];
-        if (!instance.end)
-            instance.end = null;
-        return [instance];
-    }
+    if (instances.length === 1)
+        return instances;
     const events = [];
     for (let i = 0; i < instances.length; i++) {
         const instance = instances[i];
@@ -3799,44 +3795,6 @@ function operateOnArrays(array0, array1, operate) {
     return cleanInstances(result, false);
 }
 exports.operateOnArrays = operateOnArrays;
-/**
- * Like operateOnArrays, but will multiply the number of elements in array0, with the number of elements in array1
- * @param array0
- * @param array1
- * @param operate
- */
-/*export function operateOnArraysMulti (
-    array0: Array<TimelineObjectInstance> | Reference | null,
-    array1: Array<TimelineObjectInstance> | Reference | null,
-    operate: (a: Reference | null, b: Reference | null) => Reference | null
-) {
-    if (array0 === null) return null
-
-    if (_.isArray(array1)) {
-        let resultArray: Array<TimelineObjectInstance> = []
-        _.each(array1, (array1Val) => {
-            const result = operateOnArrays(array0, { value: array1Val.start, references: array1Val.references } , operate)
-            if (_.isArray(result)) {
-                resultArray = resultArray.concat(result)
-            } else if (result !== null) {
-                resultArray.push({
-                    id: getId(),
-                    start: result.value,
-                    end: (
-                        array1Val.end !== null ?
-                        result.value + (array1Val.end - array1Val.start) :
-                        null
-                    ),
-                    references: result.references
-                })
-            }
-        })
-        return resultArray
-    } else {
-        return operateOnArrays(array0, array1, operate)
-    }
-}
-*/
 function applyRepeatingInstances(instances, repeatTime0, options) {
     if (repeatTime0 === null || !repeatTime0.value)
         return instances;
@@ -3863,7 +3821,7 @@ function applyRepeatingInstances(instances, repeatTime0, options) {
                 break;
             const cappedStartTime = cap ? Math.max(cap.start, startTime) : startTime;
             const cappedEndTime = cap && cap.end !== null && endTime !== null ? Math.min(cap.end, endTime) : endTime;
-            if ((cappedEndTime || Infinity) > cappedStartTime) {
+            if ((cappedEndTime !== null && cappedEndTime !== void 0 ? cappedEndTime : Infinity) > cappedStartTime) {
                 repeatedInstances.push({
                     id: getId(),
                     start: cappedStartTime,
@@ -3885,29 +3843,38 @@ exports.applyRepeatingInstances = applyRepeatingInstances;
  * @param parentInstances
  */
 function capInstances(instances, parentInstances) {
+    var _a, _b, _c, _d, _e, _f;
     if (isReference(parentInstances) || parentInstances === null)
         return instances;
     let returnInstances = [];
     for (let i = 0; i < instances.length; i++) {
         const instanceOrg = instances[i];
-        // let instanceParents: TimelineObjectInstance[] | null = null
+        const addedInstanceTimes = new Set();
         for (let j = 0; j < parentInstances.length; j++) {
             const parent = parentInstances[j];
             // First, check if the instance crosses the parent at all:
-            if (instanceOrg.start <= (parent.end || Infinity) && (instanceOrg.end || Infinity) >= parent.start) {
+            if (instanceOrg.start <= ((_a = parent.end) !== null && _a !== void 0 ? _a : Infinity) && ((_b = instanceOrg.end) !== null && _b !== void 0 ? _b : Infinity) >= parent.start) {
                 const instance = _.clone(instanceOrg);
                 // Cap start
                 if (instance.start < parent.start) {
                     setInstanceStartTime(instance, parent.start);
                 }
                 // Cap end
-                if (parent.end !== null && (instance.end || Infinity) > (parent.end || Infinity)) {
+                if (((_c = instance.end) !== null && _c !== void 0 ? _c : Infinity) > ((_d = parent.end) !== null && _d !== void 0 ? _d : Infinity)) {
                     setInstanceEndTime(instance, parent.end);
                 }
-                if (instance.start >= parent.start && (instance.end || Infinity) <= (parent.end || Infinity)) {
+                if (instance.start >= parent.start && ((_e = instance.end) !== null && _e !== void 0 ? _e : Infinity) <= ((_f = parent.end) !== null && _f !== void 0 ? _f : Infinity)) {
                     // The instance is within the parent
-                    instance.references = joinReferences(instance.references, parent.references);
-                    returnInstances.push(instance);
+                    if (instance.start === instance.end && addedInstanceTimes.has(instance.start)) {
+                        // Don't add zero-length instances if there are already is instances covering that time
+                    }
+                    else {
+                        instance.references = joinReferences(instance.references, parent.references);
+                        returnInstances.push(instance);
+                        addedInstanceTimes.add(instance.start);
+                        if (instance.end)
+                            addedInstanceTimes.add(instance.end);
+                    }
                 }
             }
         }
@@ -3976,7 +3943,7 @@ function addCapsToResuming(instance, ...caps) {
     const joinedCaps = joinCaps(...caps);
     for (let i = 0; i < joinedCaps.length; i++) {
         const cap = joinedCaps[i];
-        if (cap.end && instance.end && cap.end > instance.end) {
+        if (cap.end !== null && instance.end !== null && cap.end > instance.end) {
             capsToAdd.push({
                 id: cap.id,
                 start: 0,
@@ -4024,22 +3991,27 @@ function setInstanceStartTime(instance, startTime) {
 }
 exports.setInstanceStartTime = setInstanceStartTime;
 function applyParentInstances(parentInstances, value) {
-    const operate = (a, b) => {
-        if (a === null || b === null)
-            return null;
-        return {
-            value: a.value + b.value,
-            references: joinReferences(a.references, b.references),
-        };
-    };
     return operateOnArrays(parentInstances, value, operate);
 }
 exports.applyParentInstances = applyParentInstances;
+function operate(a, b) {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value + b.value,
+        references: joinReferences(a.references, b.references),
+    };
+}
 const cacheResultCache = {};
+let cleanCacheResultTimeout = null;
 /** Cache the result of function for a limited time */
 function cacheResult(name, fcn, limitTime = 1000) {
     if (Math.random() < 0.01) {
-        setTimeout(cleanCacheResult, 100);
+        if (cleanCacheResultTimeout)
+            clearTimeout(cleanCacheResultTimeout);
+        cleanCacheResultTimeout = setTimeout(() => {
+            cleanCacheResult();
+        }, 100);
     }
     const cache = cacheResultCache[name];
     if (!cache || cache.ttl < Date.now()) {
@@ -4056,11 +4028,16 @@ function cacheResult(name, fcn, limitTime = 1000) {
 }
 exports.cacheResult = cacheResult;
 function cleanCacheResult() {
+    if (cleanCacheResultTimeout) {
+        clearTimeout(cleanCacheResultTimeout);
+        cleanCacheResultTimeout = null;
+    }
     _.each(cacheResultCache, (cache, name) => {
         if (cache.ttl < Date.now())
             delete cacheResultCache[name];
     });
 }
+exports.cleanCacheResult = cleanCacheResult;
 
 },{"underscore":17}],9:[function(require,module,exports){
 "use strict";
@@ -4087,6 +4064,14 @@ function hashTimelineObject(obj) {
         obj.classes ? obj.classes.join('.') : '',
         obj.layer + '',
         obj.seamless + '',
+        /*
+        Note: The following properties are ignored, as they don't affect timing or resolving:
+         * id
+         * children
+         * keyframes
+         * isGroup
+         * content
+         */
     ];
     return thingsThatMatter.join(',');
 }
@@ -4129,12 +4114,12 @@ const lib_1 = require("../lib");
 exports.OPERATORS = ['&', '|', '+', '-', '*', '/', '%', '!'];
 const REGEXP_OPERATORS = _.map(exports.OPERATORS, (o) => '\\' + o).join('');
 function interpretExpression(expression) {
-    if (lib_1.isNumeric(expression)) {
+    if ((0, lib_1.isNumeric)(expression)) {
         return parseFloat(expression);
     }
     else if (_.isString(expression)) {
         const expressionString = expression;
-        return lib_1.cacheResult(expressionString, () => {
+        return (0, lib_1.cacheResult)(expressionString, () => {
             const expr = expressionString.replace(new RegExp('([' + REGEXP_OPERATORS + '\\(\\)])', 'g'), ' $1 '); // Make sure there's a space between every operator & operand
             const words = _.compact(expr.split(' '));
             if (words.length === 0)
@@ -4175,7 +4160,7 @@ function simplifyExpression(expr0) {
         const l = simplifyExpression(expr.l);
         const o = expr.o;
         const r = simplifyExpression(expr.r);
-        if (lib_1.isConstant(l) && lib_1.isConstant(r) && _.isNumber(l) && _.isNumber(r)) {
+        if ((0, lib_1.isConstant)(l) && (0, lib_1.isConstant)(r) && _.isNumber(l) && _.isNumber(r)) {
             // The operands can be combined:
             return o === '+'
                 ? l + r
@@ -4308,8 +4293,8 @@ class Resolver {
             throw new Error('resolveTimeline: parameter timeline missing');
         if (!options)
             throw new Error('resolveTimeline: parameter options missing');
-        validate_1.validateTimeline(timeline, false);
-        lib_1.resetId();
+        (0, validate_1.validateTimeline)(timeline, false);
+        (0, lib_1.resetId)();
         const resolvedTimeline = {
             options: { ...options },
             objects: {},
@@ -4329,7 +4314,7 @@ class Resolver {
         const addToResolvedTimeline = (obj, levelDeep, parentId, isKeyframe) => {
             if (resolvedTimeline.objects[obj.id])
                 throw Error(`All timelineObjects must be unique! (duplicate: "${obj.id}")`);
-            const o = lib_1.extendMandadory(_.clone(obj), {
+            const o = (0, lib_1.extendMandadory)(_.clone(obj), {
                 resolved: {
                     resolved: false,
                     resolving: false,
@@ -4345,7 +4330,7 @@ class Resolver {
             }
             if (isKeyframe)
                 o.resolved.isKeyframe = true;
-            common_1.addObjectToResolvedTimeline(resolvedTimeline, o);
+            (0, common_1.addObjectToResolvedTimeline)(resolvedTimeline, o);
             // Add children:
             if (obj.isGroup && obj.children) {
                 for (let i = 0; i < obj.children.length; i++) {
@@ -4357,7 +4342,7 @@ class Resolver {
             if (obj.keyframes) {
                 for (let i = 0; i < obj.keyframes.length; i++) {
                     const keyframe = obj.keyframes[i];
-                    const kf2 = lib_1.extendMandadory(_.clone(keyframe), {
+                    const kf2 = (0, lib_1.extendMandadory)(_.clone(keyframe), {
                         layer: '',
                     });
                     addToResolvedTimeline(kf2, levelDeep + 1, obj.id, true);
@@ -4371,7 +4356,7 @@ class Resolver {
         // Step 2: go though and resolve the objects
         if (options.cache) {
             // Figure out which objects has changed since last time
-            const cache = cache_1.initializeCache(options.cache, resolvedTimeline);
+            const cache = (0, cache_1.initializeCache)(options.cache, resolvedTimeline);
             // Go through all new objects, and determine whether they have changed:
             const allNewObjects = {};
             const changedReferences = {};
@@ -4392,9 +4377,9 @@ class Resolver {
                     changedReferences[ref] = true;
                 }
             };
-            _.each(resolvedTimeline.objects, (obj) => {
+            for (const obj of Object.values(resolvedTimeline.objects)) {
                 const oldHash = cache.objHashes[obj.id];
-                const newHash = cache_1.hashTimelineObject(obj);
+                const newHash = (0, cache_1.hashTimelineObject)(obj);
                 allNewObjects[obj.id] = true;
                 if (!oldHash || oldHash !== newHash) {
                     cache.objHashes[obj.id] = newHash;
@@ -4413,7 +4398,7 @@ class Resolver {
                         resolved: oldObj.resolved,
                     };
                 }
-            });
+            }
             if (cache.hasOldData) {
                 // Go through all old hashes, removing the ones that doesn't exist anymore
                 for (const objId in cache.resolvedTimeline.objects) {
@@ -4426,12 +4411,12 @@ class Resolver {
                 // Invalidate objects, by gradually removing the invalidated ones from validObjects
                 // Prepare validObjects:
                 const validObjects = {};
-                _.each(resolvedTimeline.objects, (obj) => {
+                for (const obj of Object.values(resolvedTimeline.objects)) {
                     validObjects[obj.id] = obj;
-                });
+                }
                 /** All references that depend on another reference (ie objects, classs or layers): */
                 const affectReferenceMap = {};
-                _.each(resolvedTimeline.objects, (obj) => {
+                for (const obj of Object.values(resolvedTimeline.objects)) {
                     // Add everything that this object affects:
                     const cachedObj = cache.resolvedTimeline.objects[obj.id];
                     let affectedReferences = getAllReferencesThisObjectAffects(obj);
@@ -4459,7 +4444,7 @@ class Resolver {
                             // Fetch all references for the object from the last time it was resolved.
                             // Note: This can be done, since _if_ the object was changed in any way since last resolve
                             // it'll be invalidated anyway
-                            const dependOnReferences = cache_1.getObjectReferences(cachedObj);
+                            const dependOnReferences = (0, cache_1.getObjectReferences)(cachedObj);
                             for (let i = 0; i < dependOnReferences.length; i++) {
                                 const ref = dependOnReferences[i];
                                 if (!affectReferenceMap[ref])
@@ -4468,7 +4453,7 @@ class Resolver {
                             }
                         }
                     }
-                });
+                }
                 // Invalidate all changed objects, and recursively invalidate all objects that reference those objects:
                 const handledReferences = {};
                 for (const reference of Object.keys(changedReferences)) {
@@ -4476,15 +4461,15 @@ class Resolver {
                 }
                 // The objects that are left in validObjects at this point are still valid.
                 // We can reuse the old resolving for those:
-                _.each(validObjects, (obj) => {
+                for (const obj of Object.values(validObjects)) {
                     if (!cache.resolvedTimeline.objects[obj.id])
                         throw new Error(`Something went wrong: "${obj.id}" does not exist in cache.resolvedTimeline.objects`);
                     resolvedTimeline.objects[obj.id] = cache.resolvedTimeline.objects[obj.id];
-                });
+                }
             }
-            _.each(resolvedTimeline.objects, (obj) => {
+            for (const obj of Object.values(resolvedTimeline.objects)) {
                 resolveTimelineObj(resolvedTimeline, obj);
-            });
+            }
             // Save for next time:
             cache.resolvedTimeline = resolvedTimeline;
             cache.hasOldData = true;
@@ -4495,22 +4480,22 @@ class Resolver {
             resolvedTimeline.statistics.resolvedObjectCount = 0;
             resolvedTimeline.statistics.resolvedGroupCount = 0;
             resolvedTimeline.statistics.resolvedKeyframeCount = 0;
-            _.each(resolvedTimeline.objects, (obj) => {
+            for (const obj of Object.values(resolvedTimeline.objects)) {
                 updateStatistics(resolvedTimeline, obj);
-            });
+            }
             return resolvedTimeline;
         }
         else {
             // If there are no cache provided, just resolve all objects:
-            _.each(resolvedTimeline.objects, (obj) => {
+            for (const obj of Object.values(resolvedTimeline.objects)) {
                 resolveTimelineObj(resolvedTimeline, obj);
-            });
+            }
             return resolvedTimeline;
         }
     }
     /** Calculate the state for all points in time.  */
     static resolveAllStates(resolvedTimeline, cache) {
-        return state_1.resolveStates(resolvedTimeline, undefined, cache);
+        return (0, state_1.resolveStates)(resolvedTimeline, cache);
     }
     /**
      * Calculate the state at a given point in time.
@@ -4521,7 +4506,7 @@ class Resolver {
      * @param eventLimit (Optional) Limits the number of returned upcoming events.
      */
     static getState(resolved, time, eventLimit) {
-        return state_1.getState(resolved, time, eventLimit);
+        return (0, state_1.getState)(resolved, time, eventLimit);
     }
 }
 exports.Resolver = Resolver;
@@ -4538,7 +4523,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
     for (let i = 0; i < enables.length; i++) {
         const enable = enables[i];
         let newInstances = [];
-        const repeatingExpr = enable.repeating !== undefined ? expression_1.interpretExpression(enable.repeating) : null;
+        const repeatingExpr = enable.repeating !== undefined ? (0, expression_1.interpretExpression)(enable.repeating) : null;
         const lookedRepeating = lookupExpression(resolvedTimeline, obj, repeatingExpr, 'duration');
         const lookedupRepeating = lookedRepeating.instances;
         directReferences = directReferences.concat(lookedRepeating.allReferences);
@@ -4552,16 +4537,16 @@ function resolveTimelineObj(resolvedTimeline, obj) {
         else if (enable.while + '' === '0') {
             start = 'false';
         }
-        const startExpr = expression_1.simplifyExpression(start);
+        const startExpr = (0, expression_1.simplifyExpression)(start);
         let parentInstances = null;
         let hasParent = false;
         let startRefersToParent = false;
         if (obj.resolved.parentId) {
             hasParent = true;
-            const lookup = lookupExpression(resolvedTimeline, obj, expression_1.interpretExpression(`#${obj.resolved.parentId}`), 'start');
+            const lookup = lookupExpression(resolvedTimeline, obj, (0, expression_1.interpretExpression)(`#${obj.resolved.parentId}`), 'start');
             parentInstances = lookup.instances; // a start-reference will always return an array, or null
             directReferences = directReferences.concat(lookup.allReferences);
-            if (lib_1.isConstant(startExpr)) {
+            if ((0, lib_1.isConstant)(startExpr)) {
                 // Only use parent if the expression resolves to a number (ie doesn't contain any references)
                 startRefersToParent = true;
             }
@@ -4570,7 +4555,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
         let lookedupStarts = lookupStart.instances;
         directReferences = directReferences.concat(lookupStart.allReferences);
         if (startRefersToParent) {
-            lookedupStarts = lib_1.applyParentInstances(parentInstances, lookedupStarts);
+            lookedupStarts = (0, lib_1.applyParentInstances)(parentInstances, lookedupStarts);
         }
         if (enable.while) {
             if (_.isArray(lookedupStarts)) {
@@ -4579,7 +4564,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
             else if (lookedupStarts !== null) {
                 newInstances = [
                     {
-                        id: lib_1.getId(),
+                        id: (0, lib_1.getId)(),
                         start: lookedupStarts.value,
                         end: null,
                         references: lookedupStarts.references,
@@ -4608,7 +4593,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                     value: true,
                     data: {
                         instance: {
-                            id: lib_1.getId(),
+                            id: (0, lib_1.getId)(),
                             start: lookedupStarts.value,
                             end: null,
                             references: lookedupStarts.references,
@@ -4619,10 +4604,10 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                 });
             }
             if (enable.end !== undefined) {
-                const endExpr = expression_1.interpretExpression(enable.end);
+                const endExpr = (0, expression_1.interpretExpression)(enable.end);
                 let endRefersToParent = false;
                 if (obj.resolved.parentId) {
-                    if (lib_1.isConstant(endExpr)) {
+                    if ((0, lib_1.isConstant)(endExpr)) {
                         // Only use parent if the expression resolves to a number (ie doesn't contain any references)
                         endRefersToParent = true;
                     }
@@ -4633,7 +4618,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                 if (lookupEnd)
                     directReferences = directReferences.concat(lookupEnd.allReferences);
                 if (endRefersToParent) {
-                    lookedupEnds = lib_1.applyParentInstances(parentInstances, lookedupEnds);
+                    lookedupEnds = (0, lib_1.applyParentInstances)(parentInstances, lookedupEnds);
                 }
                 if (_.isArray(lookedupEnds)) {
                     for (let i = 0; i < lookedupEnds.length; i++) {
@@ -4652,7 +4637,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                         value: false,
                         data: {
                             instance: {
-                                id: lib_1.getId(),
+                                id: (0, lib_1.getId)(),
                                 start: lookedupEnds.value,
                                 end: null,
                                 references: lookedupEnds.references,
@@ -4664,7 +4649,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                 }
             }
             else if (enable.duration !== undefined) {
-                const durationExpr = expression_1.interpretExpression(enable.duration);
+                const durationExpr = (0, expression_1.interpretExpression)(enable.duration);
                 const lookupDuration = lookupExpression(resolvedTimeline, obj, durationExpr, 'duration');
                 let lookedupDuration = lookupDuration.instances;
                 directReferences = directReferences.concat(lookupDuration.allReferences);
@@ -4687,7 +4672,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                         const e = events[i];
                         if (e.value) {
                             const time = e.time + tmpLookedupDuration.value;
-                            const references = lib_1.joinReferences(e.references, tmpLookedupDuration.references);
+                            const references = (0, lib_1.joinReferences)(e.references, tmpLookedupDuration.references);
                             events.push({
                                 time: time,
                                 value: false,
@@ -4706,7 +4691,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                     }
                 }
             }
-            newInstances = lib_1.convertEventsToInstances(events, false);
+            newInstances = (0, lib_1.convertEventsToInstances)(events, false);
         }
         if (hasParent) {
             // figure out what parent-instance the instances are tied to, and cap them
@@ -4719,7 +4704,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                     });
                     if (referredParentInstance) {
                         // If the child refers to its parent, there should be one specific instance to cap into
-                        const cappedInstance = lib_1.capInstances([instance], [referredParentInstance])[0];
+                        const cappedInstance = (0, lib_1.capInstances)([instance], [referredParentInstance])[0];
                         if (cappedInstance) {
                             if (!cappedInstance.caps)
                                 cappedInstance.caps = [];
@@ -4735,7 +4720,7 @@ function resolveTimelineObj(resolvedTimeline, obj) {
                         // If the child doesn't refer to its parent, it should be capped within all of its parent instances
                         for (let i = 0; i < parentInstances.length; i++) {
                             const parentInstance = parentInstances[i];
-                            const cappedInstance = lib_1.capInstances([instance], [parentInstance])[0];
+                            const cappedInstance = (0, lib_1.capInstances)([instance], [parentInstance])[0];
                             if (cappedInstance) {
                                 if (parentInstance) {
                                     if (!cappedInstance.caps)
@@ -4754,19 +4739,19 @@ function resolveTimelineObj(resolvedTimeline, obj) {
             }
             newInstances = cappedInstances;
         }
-        newInstances = lib_1.applyRepeatingInstances(newInstances, lookedupRepeating, resolvedTimeline.options);
+        newInstances = (0, lib_1.applyRepeatingInstances)(newInstances, lookedupRepeating, resolvedTimeline.options);
         instances = instances.concat(newInstances);
     }
     // Make sure the instance ids are unique:
     const ids = {};
     for (const instance of instances) {
         if (ids[instance.id]) {
-            instance.id = `${instance.id}_${lib_1.getId()}`;
+            instance.id = `${instance.id}_${(0, lib_1.getId)()}`;
         }
         ids[instance.id] = true;
     }
     if (obj.seamless && instances.length > 1) {
-        instances = lib_1.cleanInstances(instances, true, false);
+        instances = (0, lib_1.cleanInstances)(instances, true, false);
     }
     obj.resolved.resolved = true;
     obj.resolved.resolving = false;
@@ -4829,7 +4814,7 @@ function invalidateObjectsWithReference(handledReferences, reference, affectRefe
 function lookupExpression(resolvedTimeline, obj, expr, context) {
     if (expr === null)
         return { instances: null, allReferences: [] };
-    if (_.isString(expr) && lib_1.isNumeric(expr)) {
+    if (_.isString(expr) && (0, lib_1.isNumeric)(expr)) {
         return {
             instances: {
                 value: parseFloat(expr),
@@ -4849,7 +4834,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
     }
     else if (_.isString(expr)) {
         expr = expr.trim();
-        if (lib_1.isConstant(expr)) {
+        if ((0, lib_1.isConstant)(expr)) {
             if (expr.match(/^true$/i)) {
                 return {
                     instances: {
@@ -4955,7 +4940,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                                 if (duration !== null) {
                                     instanceDurations.push({
                                         value: duration,
-                                        references: lib_1.joinReferences(referencedObj.id, firstInstance.references),
+                                        references: (0, lib_1.joinReferences)(referencedObj.id, firstInstance.references),
                                     });
                                 }
                             }
@@ -4996,10 +4981,10 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                 }
                 if (returnInstances.length) {
                     if (invert) {
-                        returnInstances = lib_1.invertInstances(returnInstances);
+                        returnInstances = (0, lib_1.invertInstances)(returnInstances);
                     }
                     else {
-                        returnInstances = lib_1.cleanInstances(returnInstances, true, true);
+                        returnInstances = (0, lib_1.cleanInstances)(returnInstances, true, true);
                     }
                     if (ignoreFirstIfZero) {
                         const first = _.first(returnInstances);
@@ -5032,7 +5017,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                 // Discard l, invert and return r:
                 if (lookupExpr.r && _.isArray(lookupExpr.r)) {
                     return {
-                        instances: lib_1.invertInstances(lookupExpr.r),
+                        instances: (0, lib_1.invertInstances)(lookupExpr.r),
                         allReferences: allReferences,
                     };
                 }
@@ -5080,7 +5065,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                         addEvents(lookupExpr.l, true);
                     if (_.isArray(lookupExpr.r))
                         addEvents(lookupExpr.r, false);
-                    events = lib_1.sortEvents(events);
+                    events = (0, lib_1.sortEvents)(events);
                     const calcResult = lookupExpr.o === '&'
                         ? (left, right) => !!(left && right)
                         : lookupExpr.o === '|'
@@ -5088,8 +5073,8 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                             : () => {
                                 return false;
                             };
-                    let leftValue = lib_1.isReference(lookupExpr.l) ? !!lookupExpr.l.value : false;
-                    let rightValue = lib_1.isReference(lookupExpr.r) ? !!lookupExpr.r.value : false;
+                    let leftValue = (0, lib_1.isReference)(lookupExpr.l) ? !!lookupExpr.l.value : false;
+                    let rightValue = (0, lib_1.isReference)(lookupExpr.r) ? !!lookupExpr.r.value : false;
                     let leftInstance = null;
                     let rightInstance = null;
                     let resultValue = calcResult(leftValue, rightValue);
@@ -5097,7 +5082,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                     const updateInstance = (time, value, references, caps) => {
                         if (value) {
                             instances.push({
-                                id: lib_1.getId(),
+                                id: (0, lib_1.getId)(),
                                 start: time,
                                 end: null,
                                 references: references,
@@ -5112,7 +5097,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                             }
                         }
                     };
-                    updateInstance(0, resultValue, lib_1.joinReferences(lib_1.isReference(lookupExpr.l) ? lookupExpr.l.references : [], lib_1.isReference(lookupExpr.r) ? lookupExpr.r.references : []), []);
+                    updateInstance(0, resultValue, (0, lib_1.joinReferences)((0, lib_1.isReference)(lookupExpr.l) ? lookupExpr.l.references : [], (0, lib_1.isReference)(lookupExpr.r) ? lookupExpr.r.references : []), []);
                     for (let i = 0; i < events.length; i++) {
                         const e = events[i];
                         const next = events[i + 1];
@@ -5128,7 +5113,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                             const newResultValue = calcResult(leftValue, rightValue);
                             const resultCaps = (leftInstance ? leftInstance.caps || [] : []).concat(rightInstance ? rightInstance.caps || [] : []);
                             if (newResultValue !== resultValue) {
-                                updateInstance(e.time, newResultValue, lib_1.joinReferences(leftInstance ? leftInstance.references : [], rightInstance ? rightInstance.references : []), resultCaps);
+                                updateInstance(e.time, newResultValue, (0, lib_1.joinReferences)(leftInstance ? leftInstance.references : [], rightInstance ? rightInstance.references : []), resultCaps);
                                 resultValue = newResultValue;
                             }
                         }
@@ -5140,35 +5125,35 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                         ? (a, b) => {
                             return {
                                 value: a.value + b.value,
-                                references: lib_1.joinReferences(a.references, b.references),
+                                references: (0, lib_1.joinReferences)(a.references, b.references),
                             };
                         }
                         : lookupExpr.o === '-'
                             ? (a, b) => {
                                 return {
                                     value: a.value - b.value,
-                                    references: lib_1.joinReferences(a.references, b.references),
+                                    references: (0, lib_1.joinReferences)(a.references, b.references),
                                 };
                             }
                             : lookupExpr.o === '*'
                                 ? (a, b) => {
                                     return {
                                         value: a.value * b.value,
-                                        references: lib_1.joinReferences(a.references, b.references),
+                                        references: (0, lib_1.joinReferences)(a.references, b.references),
                                     };
                                 }
                                 : lookupExpr.o === '/'
                                     ? (a, b) => {
                                         return {
                                             value: a.value / b.value,
-                                            references: lib_1.joinReferences(a.references, b.references),
+                                            references: (0, lib_1.joinReferences)(a.references, b.references),
                                         };
                                     }
                                     : lookupExpr.o === '%'
                                         ? (a, b) => {
                                             return {
                                                 value: a.value % b.value,
-                                                references: lib_1.joinReferences(a.references, b.references),
+                                                references: (0, lib_1.joinReferences)(a.references, b.references),
                                             };
                                         }
                                         : () => null;
@@ -5177,7 +5162,7 @@ function lookupExpression(resolvedTimeline, obj, expr, context) {
                             return null;
                         return operateInner(a, b);
                     };
-                    const result = lib_1.operateOnArrays(lookupExpr.l, lookupExpr.r, operate);
+                    const result = (0, lib_1.operateOnArrays)(lookupExpr.l, lookupExpr.r, operate);
                     return { instances: result, allReferences: allReferences };
                 }
             }
@@ -5196,7 +5181,7 @@ const common_1 = require("./common");
 const enums_1 = require("../api/enums");
 const lib_1 = require("../lib");
 function getState(resolved, time, eventLimit = 0) {
-    const resolvedStates = isResolvedStates(resolved) ? resolved : resolveStates(resolved, time);
+    const resolvedStates = isResolvedStates(resolved) ? resolved : resolveStates(resolved);
     const state = {
         time: time,
         layers: {},
@@ -5214,7 +5199,8 @@ function getState(resolved, time, eventLimit = 0) {
     return state;
 }
 exports.getState = getState;
-function resolveStates(resolved, onlyForTime, cache) {
+function resolveStates(resolved, cache) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const resolvedStates = {
         options: resolved.options,
         statistics: resolved.statistics,
@@ -5225,7 +5211,7 @@ function resolveStates(resolved, onlyForTime, cache) {
         state: {},
         nextEvents: [],
     };
-    if (cache && !onlyForTime && resolved.statistics.resolvingCount === 0 && cache.resolvedStates) {
+    if (cache && resolved.statistics.resolvingCount === 0 && cache.resolvedStates) {
         // Nothing has changed since last time, just return the states right away:
         return cache.resolvedStates;
     }
@@ -5245,10 +5231,11 @@ function resolveStates(resolved, onlyForTime, cache) {
     // Step 1: Collect all points-of-interest (which points in time we want to evaluate)
     // and which instances that are interesting
     const pointsInTime = {};
-    const addPointInTime = (time, enable, obj, instance) => {
+    const addPointInTime = (time, checkId, order, obj, instance) => {
+        // Note on order: Ending events come before starting events
         if (!pointsInTime[time + ''])
             pointsInTime[time + ''] = [];
-        pointsInTime[time + ''].push({ obj, instance, enable: enable });
+        pointsInTime[time + ''].push({ obj, instance, checkId, order });
     };
     for (const obj of resolvedObjects) {
         if (!obj.disabled && obj.resolved.resolved) {
@@ -5257,29 +5244,27 @@ function resolveStates(resolved, onlyForTime, cache) {
                 if (obj.layer) {
                     // if layer is empty, don't put in state
                     for (const instance of obj.resolved.instances) {
-                        let useInstance = true;
-                        if (onlyForTime) {
-                            useInstance =
-                                (instance.start || 0) <= onlyForTime && (instance.end || Infinity) > onlyForTime;
-                        }
-                        if (useInstance) {
-                            const timeEvents = [];
-                            timeEvents.push({ time: instance.start, enable: true });
-                            if (instance.end)
-                                timeEvents.push({ time: instance.end, enable: false });
-                            // Also include times from parents, as they could affect the state of this instance:
-                            for (let i = 0; i < parentTimes.length; i++) {
-                                const parentTime = parentTimes[i];
-                                if (parentTime &&
-                                    parentTime.time > (instance.start || 0) &&
-                                    parentTime.time < (instance.end || Infinity)) {
-                                    timeEvents.push(parentTime);
-                                }
+                        const timeEvents = [];
+                        timeEvents.push({ time: instance.start, enable: true });
+                        if (instance.end)
+                            timeEvents.push({ time: instance.end, enable: false });
+                        // Also include times from parents, as they could affect the state of this instance:
+                        for (let i = 0; i < parentTimes.length; i++) {
+                            const parentTime = parentTimes[i];
+                            if (parentTime &&
+                                parentTime.time > (instance.start || 0) &&
+                                parentTime.time < ((_a = instance.end) !== null && _a !== void 0 ? _a : Infinity)) {
+                                timeEvents.push(parentTime);
                             }
-                            // Save a reference to this instance on all points in time that could affect it:
-                            for (let i = 0; i < timeEvents.length; i++) {
-                                const timeEvent = timeEvents[i];
-                                addPointInTime(timeEvent.time, timeEvent.enable, obj, instance);
+                        }
+                        // Save a reference to this instance on all points in time that could affect it:
+                        for (let i = 0; i < timeEvents.length; i++) {
+                            const timeEvent = timeEvents[i];
+                            if (timeEvent.enable) {
+                                addPointInTime(timeEvent.time, 'start', 1, obj, instance);
+                            }
+                            else {
+                                addPointInTime(timeEvent.time, 'end', 0, obj, instance);
                             }
                         }
                     }
@@ -5290,10 +5275,10 @@ function resolveStates(resolved, onlyForTime, cache) {
                 // Also add keyframes to pointsInTime:
                 for (const instance of keyframe.resolved.instances) {
                     // Keyframe start time
-                    addPointInTime(instance.start, true, keyframe, instance);
+                    addPointInTime(instance.start, 'start', 1, keyframe, instance);
                     // Keyframe end time
                     if (instance.end !== null) {
-                        addPointInTime(instance.end, false, keyframe, instance);
+                        addPointInTime(instance.end, 'end', 0, keyframe, instance);
                     }
                 }
             }
@@ -5327,10 +5312,9 @@ function resolveStates(resolved, onlyForTime, cache) {
                     return -1;
                 if (!a.obj.resolved.isKeyframe && b.obj.resolved.isKeyframe)
                     return 1;
-                // Ending events come before starting events:
-                if (a.enable && !b.enable)
+                if (a.order > b.order)
                     return 1;
-                if (!a.enable && b.enable)
+                if (a.order < b.order)
                     return -1;
                 // Deeper objects (children in groups) comes later, we want to check the parent groups first:
                 if ((a.obj.resolved.levelDeep || 0) > (b.obj.resolved.levelDeep || 0))
@@ -5344,9 +5328,9 @@ function resolveStates(resolved, onlyForTime, cache) {
             const o = instancesToCheck[j];
             const obj = o.obj;
             const instance = o.instance;
-            let toBeEnabled = (instance.start || 0) <= time && (instance.end || Infinity) > time;
+            let toBeEnabled = (instance.start || 0) <= time && ((_b = instance.end) !== null && _b !== void 0 ? _b : Infinity) > time;
             const layer = obj.layer + '';
-            const identifier = obj.id + '_' + instance.id + '_' + o.enable;
+            const identifier = obj.id + '_' + instance.id + '_' + o.checkId;
             if (!checkedObjectsThisTime[identifier]) {
                 // Only check each object and event-type once for every point in time
                 checkedObjectsThisTime[identifier] = true;
@@ -5400,20 +5384,19 @@ function resolveStates(resolved, onlyForTime, cache) {
                     if (replaceOldObj || removeOldObj) {
                         if (prevObj) {
                             // Cap the old instance, so it'll end at this point in time:
-                            lib_1.setInstanceEndTime(prevObj.instance, time);
+                            (0, lib_1.setInstanceEndTime)(prevObj.instance, time);
                             // Update activeObjIds:
                             delete activeObjIds[prevObj.id];
                             // Add to nextEvents:
-                            if (!onlyForTime || time > onlyForTime) {
-                                resolvedStates.nextEvents.push({
-                                    type: enums_1.EventType.END,
-                                    time: time,
-                                    objId: prevObj.id,
-                                });
-                                eventObjectTimes[instance.end + ''] = enums_1.EventType.END;
-                            }
+                            resolvedStates.nextEvents.push({
+                                type: enums_1.EventType.END,
+                                time: time,
+                                objId: prevObj.id,
+                            });
+                            eventObjectTimes[instance.end + ''] = enums_1.EventType.END;
                         }
                     }
+                    let changed = false;
                     if (replaceOldObj) {
                         // Set the new object to State
                         // Construct a new object clone:
@@ -5429,7 +5412,7 @@ function resolveStates(resolved, onlyForTime, cache) {
                                 ...(newObj.resolved || {}),
                                 instances: [],
                             };
-                            common_1.addObjectToResolvedTimeline(resolvedStates, newObj);
+                            (0, common_1.addObjectToResolvedTimeline)(resolvedStates, newObj);
                         }
                         const newInstance = {
                             ...currentOnTopOfLayer.instance,
@@ -5459,23 +5442,41 @@ function resolveStates(resolved, onlyForTime, cache) {
                         currentState[layer] = newObjInstance;
                         // Update activeObjIds:
                         activeObjIds[newObjInstance.id] = newObjInstance;
-                        // Update the tracking state as well:
-                        setStateAtTime(resolvedStates.state, layer, time, newObjInstance);
                         // Add to nextEvents:
-                        if (newInstance.start > (onlyForTime || 0)) {
-                            resolvedStates.nextEvents.push({
-                                type: enums_1.EventType.START,
-                                time: newInstance.start,
-                                objId: obj.id,
-                            });
-                            eventObjectTimes[newInstance.start + ''] = enums_1.EventType.START;
-                        }
+                        resolvedStates.nextEvents.push({
+                            type: enums_1.EventType.START,
+                            time: newInstance.start,
+                            objId: obj.id,
+                        });
+                        eventObjectTimes[newInstance.start + ''] = enums_1.EventType.START;
+                        changed = true;
                     }
                     else if (removeOldObj) {
                         // Remove from current state:
                         delete currentState[layer];
-                        // Update the tracking state as well:
-                        setStateAtTime(resolvedStates.state, layer, time, null);
+                        changed = true;
+                    }
+                    if (changed) {
+                        // Also make sure any children are updated:
+                        // Go through the object on hand, but also the one in the currentState
+                        const parentsToCheck = [];
+                        if (obj.isGroup)
+                            parentsToCheck.push(obj);
+                        if ((_c = currentState[layer]) === null || _c === void 0 ? void 0 : _c.isGroup)
+                            parentsToCheck.push(currentState[layer]);
+                        for (const parent of parentsToCheck) {
+                            if ((_d = parent.children) === null || _d === void 0 ? void 0 : _d.length) {
+                                for (const child0 of parent.children) {
+                                    const child = resolved.objects[child0.id];
+                                    for (const instance of child.resolved.instances) {
+                                        if (instance.start <= time && ((_e = instance.end) !== null && _e !== void 0 ? _e : Infinity) > time) {
+                                            // Add the child instance, because that might be affected:
+                                            addPointInTime(time, 'child', 99, child, instance);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 else {
@@ -5483,7 +5484,7 @@ function resolveStates(resolved, onlyForTime, cache) {
                     const keyframe = obj;
                     // Add keyframe to resolvedStates.objects:
                     resolvedStates.objects[keyframe.id] = keyframe;
-                    const toBeEnabled = (instance.start || 0) <= time && (instance.end || Infinity) > time;
+                    const toBeEnabled = (instance.start || 0) <= time && ((_f = instance.end) !== null && _f !== void 0 ? _f : Infinity) > time;
                     if (toBeEnabled) {
                         const newObjInstance = {
                             ...keyframe,
@@ -5524,7 +5525,7 @@ function resolveStates(resolved, onlyForTime, cache) {
                                 objId: keyframe.id,
                             });
                             // Cap end within parent
-                            let instanceEnd = Math.min(instance.end || Infinity, parentObjInstance.instance.end || Infinity);
+                            let instanceEnd = Math.min((_g = instance.end) !== null && _g !== void 0 ? _g : Infinity, (_h = parentObjInstance.instance.end) !== null && _h !== void 0 ? _h : Infinity);
                             if (instanceEnd === Infinity)
                                 instanceEnd = null;
                             if (instanceEnd !== null) {
@@ -5545,30 +5546,129 @@ function resolveStates(resolved, onlyForTime, cache) {
     }
     // At this point, the instances of all objects (excluding keyframes) are properly calculated,
     // taking into account priorities, clashes etc.
-    for (const id of Object.keys(resolvedStates.objects)) {
-        const keyframe = resolvedStates.objects[id];
-        if (keyframe.resolved.isKeyframe && keyframe.resolved.parentId) {
-            const parent = resolvedStates.objects[keyframe.resolved.parentId];
-            if (parent) {
-                // Cap the keyframe instances within its parents instances:
-                keyframe.resolved.instances = lib_1.capInstances(keyframe.resolved.instances, parent.resolved.instances);
-                // Ensure sure the instances are in the state
-                for (let i = 0; i < keyframe.resolved.instances.length; i++) {
-                    const instance = keyframe.resolved.instances[i];
-                    const keyframeInstance = {
-                        ...keyframe,
-                        instance: instance,
-                        isKeyframe: true,
-                        keyframeEndTime: instance.end,
-                    };
-                    // Add keyframe to the tracking state:
-                    addKeyframeAtTime(resolvedStates.state, parent.layer + '', instance.start, keyframeInstance);
+    // Cap children inside their parents:
+    {
+        const allChildren = Object.values(resolvedStates.objects)
+            .filter((obj) => !!obj.resolved.parentId)
+            // Sort, so that the outermost are handled first:
+            .sort((a, b) => {
+            var _a, _b;
+            return ((_a = a.resolved.levelDeep) !== null && _a !== void 0 ? _a : 0) - ((_b = b.resolved.levelDeep) !== null && _b !== void 0 ? _b : 0);
+        });
+        for (const obj of allChildren) {
+            if (obj.resolved.parentId) {
+                const parent = resolvedStates.objects[obj.resolved.parentId];
+                if (parent) {
+                    obj.resolved.instances = (0, lib_1.cleanInstances)((0, lib_1.capInstances)(obj.resolved.instances, parent.resolved.instances), false, false);
                 }
             }
         }
-        const obj = resolvedStates.objects[id];
-        if (obj.seamless && obj.resolved.instances.length > 1) {
-            obj.resolved.instances = lib_1.cleanInstances(obj.resolved.instances, true, false);
+    }
+    // At this point, all instances of the objects should be properly calculated.
+    // Go through all instances of all objects to create temporary states of all layers and times:
+    {
+        const states = {};
+        for (const id of Object.keys(resolvedStates.objects)) {
+            const obj = resolvedStates.objects[id];
+            const layer = `${obj.layer}`;
+            if (!states[layer])
+                states[layer] = {};
+            const stateLayer = states[layer];
+            if (!obj.resolved.isKeyframe) {
+                for (const instance of obj.resolved.instances) {
+                    const startTime = instance.start + '';
+                    if (!stateLayer[startTime]) {
+                        stateLayer[startTime] = {
+                            startCount: 0,
+                            endCount: 0,
+                            objectInstance: null,
+                        };
+                    }
+                    const newObjInstance = {
+                        ...obj,
+                        instance: instance,
+                    };
+                    stateLayer[startTime].startCount++;
+                    stateLayer[startTime].objectInstance = newObjInstance;
+                    if (instance.end !== null) {
+                        const endTime = instance.end + '';
+                        if (!stateLayer[endTime]) {
+                            stateLayer[endTime] = {
+                                startCount: 0,
+                                endCount: 0,
+                                objectInstance: null,
+                            };
+                        }
+                        stateLayer[endTime].endCount++;
+                    }
+                }
+            }
+        }
+        // Go through the temporary states and apply the changes to the resolvedStates.state:
+        for (const layer of Object.keys(states)) {
+            let sum = 0;
+            const times = Object.keys(states[layer])
+                .map((time) => parseFloat(time))
+                // Sort chronologically:
+                .sort((a, b) => a - b);
+            for (let i = 0; i < times.length; i++) {
+                const time = times[i];
+                const s = states[layer][`${time}`];
+                sum += s.startCount;
+                sum -= s.endCount;
+                // Check for fatal bugs:
+                // If the sum is larger than one, more than one start was found at the same time, which should not be possible.
+                if (sum > 1)
+                    throw new Error(`Too many start events at ${layer} ${time}: ${sum}`);
+                // If the sum is less than zero, there have been more ends than starts, which should not be possible.
+                if (sum < 0)
+                    throw new Error(`Too many end events at ${layer} ${time}: ${sum}`);
+                // Apply the state:
+                if (!resolvedStates.state[layer])
+                    resolvedStates.state[layer] = {};
+                if (sum) {
+                    // This means that the object has started
+                    if (!s.objectInstance)
+                        throw new Error(`objectInstance not set, event though sum=${sum} at ${layer} ${time}`);
+                    resolvedStates.state[layer][time] = [s.objectInstance];
+                }
+                else {
+                    // This means that the object has ended
+                    resolvedStates.state[layer][time] = null;
+                }
+            }
+        }
+    }
+    // Cap keyframes inside their parents:
+    for (const id of Object.keys(resolvedStates.objects)) {
+        {
+            const keyframe = resolvedStates.objects[id];
+            if (keyframe.resolved.isKeyframe && keyframe.resolved.parentId) {
+                const parent = resolvedStates.objects[keyframe.resolved.parentId];
+                if (parent) {
+                    // Cap the keyframe instances within its parents instances:
+                    keyframe.resolved.instances = (0, lib_1.capInstances)(keyframe.resolved.instances, parent.resolved.instances);
+                    // Ensure sure the instances are in the state
+                    for (let i = 0; i < keyframe.resolved.instances.length; i++) {
+                        const instance = keyframe.resolved.instances[i];
+                        const keyframeInstance = {
+                            ...keyframe,
+                            instance: instance,
+                            isKeyframe: true,
+                            keyframeEndTime: instance.end,
+                        };
+                        // Add keyframe to the tracking state:
+                        addKeyframeAtTime(resolvedStates.state, parent.layer + '', instance.start, keyframeInstance);
+                    }
+                }
+            }
+        }
+        // Fix (merge) instances of seamless objects:
+        {
+            const obj = resolvedStates.objects[id];
+            if (obj.seamless && obj.resolved.instances.length > 1) {
+                obj.resolved.instances = (0, lib_1.cleanInstances)(obj.resolved.instances, true, false);
+            }
         }
     }
     // At this point, ALL instances are properly calculated.
@@ -5581,9 +5681,6 @@ function resolveStates(resolved, onlyForTime, cache) {
             resolvedStates.nextEvents.push(keyframeEvent);
             eventObjectTimes[keyframeEvent.time + ''] = enums_1.EventType.KEYFRAME;
         }
-    }
-    if (onlyForTime) {
-        resolvedStates.nextEvents = _.filter(resolvedStates.nextEvents, (e) => e.time > onlyForTime);
     }
     resolvedStates.nextEvents.sort((a, b) => {
         if (a.time > b.time)
@@ -5600,14 +5697,14 @@ function resolveStates(resolved, onlyForTime, cache) {
             return 1;
         return 0;
     });
-    if (cache && !onlyForTime) {
+    if (cache) {
         cache.resolvedStates = resolvedStates;
     }
     return resolvedStates;
 }
 exports.resolveStates = resolveStates;
 function applyKeyframeContent(parentContent, keyframeContent) {
-    _.each(keyframeContent, (value, attr) => {
+    for (const [attr, value] of Object.entries(keyframeContent)) {
         if (_.isArray(value)) {
             if (!_.isArray(parentContent[attr]))
                 parentContent[attr] = [];
@@ -5622,7 +5719,7 @@ function applyKeyframeContent(parentContent, keyframeContent) {
         else {
             parentContent[attr] = value;
         }
-    });
+    }
 }
 exports.applyKeyframeContent = applyKeyframeContent;
 function getTimesFromParents(resolved, obj) {
@@ -5638,11 +5735,6 @@ function getTimesFromParents(resolved, obj) {
     }
     return times;
 }
-function setStateAtTime(states, layer, time, objInstance) {
-    if (!states[layer])
-        states[layer] = {};
-    states[layer][time + ''] = objInstance ? [objInstance] : objInstance;
-}
 function addKeyframeAtTime(states, layer, time, objInstanceKf) {
     if (!states[layer])
         states[layer] = {};
@@ -5655,9 +5747,12 @@ function addKeyframeAtTime(states, layer, time, objInstanceKf) {
     }
 }
 function getStateAtTime(states, layer, requestTime) {
+    var _a;
     const layerStates = states[layer] || {};
-    const times = _.map(_.keys(layerStates), (time) => parseFloat(time));
-    times.sort((a, b) => {
+    const times = Object.keys(layerStates)
+        .map((time) => parseFloat(time))
+        // Sort chronologically:
+        .sort((a, b) => {
         return a - b;
     });
     let state = null;
@@ -5681,7 +5776,7 @@ function getStateAtTime(states, layer, requestTime) {
                 for (let i = 0; i < keyframes.length; i++) {
                     const keyframe = keyframes[i];
                     if (state && keyframe.resolved.parentId === state.id) {
-                        if ((keyframe.keyframeEndTime || Infinity) > requestTime) {
+                        if (((_a = keyframe.keyframeEndTime) !== null && _a !== void 0 ? _a : Infinity) > requestTime) {
                             if (!isCloned) {
                                 isCloned = true;
                                 state = {
@@ -5867,7 +5962,7 @@ exports.validateKeyframe = validateKeyframe;
 
 },{"underscore":17}],15:[function(require,module,exports){
 (function (global){
-/*! *****************************************************************************
+/******************************************************************************
 Copyright (c) Microsoft Corporation.
 
 Permission to use, copy, modify, and/or distribute this software for any
@@ -5905,6 +6000,7 @@ var __importStar;
 var __importDefault;
 var __classPrivateFieldGet;
 var __classPrivateFieldSet;
+var __classPrivateFieldIn;
 var __createBinding;
 (function (factory) {
     var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
@@ -6021,7 +6117,11 @@ var __createBinding;
 
     __createBinding = Object.create ? (function(o, m, k, k2) {
         if (k2 === undefined) k2 = k;
-        Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+        var desc = Object.getOwnPropertyDescriptor(m, k);
+        if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+            desc = { enumerable: true, get: function() { return m[k]; } };
+        }
+        Object.defineProperty(o, k2, desc);
     }) : (function(o, m, k, k2) {
         if (k2 === undefined) k2 = k;
         o[k2] = m[k];
@@ -6079,7 +6179,7 @@ var __createBinding;
                 ar[i] = from[i];
             }
         }
-        return to.concat(ar || from);
+        return to.concat(ar || Array.prototype.slice.call(from));
     };
 
     __await = function (v) {
@@ -6148,6 +6248,11 @@ var __createBinding;
         return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
     };
 
+    __classPrivateFieldIn = function (state, receiver) {
+        if (receiver === null || (typeof receiver !== "object" && typeof receiver !== "function")) throw new TypeError("Cannot use 'in' operator on non-object");
+        return typeof state === "function" ? receiver === state : state.has(receiver);
+    };
+
     exporter("__extends", __extends);
     exporter("__assign", __assign);
     exporter("__rest", __rest);
@@ -6172,6 +6277,7 @@ var __createBinding;
     exporter("__importDefault", __importDefault);
     exporter("__classPrivateFieldGet", __classPrivateFieldGet);
     exporter("__classPrivateFieldSet", __classPrivateFieldSet);
+    exporter("__classPrivateFieldIn", __classPrivateFieldIn);
 });
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
@@ -6435,19 +6541,19 @@ var __importDefault;
     exports.noConflict = function () { global._ = current; return exports; };
   }()));
 }(this, (function () {
-  //     Underscore.js 1.13.1
+  //     Underscore.js 1.13.4
   //     https://underscorejs.org
-  //     (c) 2009-2021 Jeremy Ashkenas, Julian Gonggrijp, and DocumentCloud and Investigative Reporters & Editors
+  //     (c) 2009-2022 Jeremy Ashkenas, Julian Gonggrijp, and DocumentCloud and Investigative Reporters & Editors
   //     Underscore may be freely distributed under the MIT license.
 
   // Current version.
-  var VERSION = '1.13.1';
+  var VERSION = '1.13.4';
 
   // Establish the root object, `window` (`self`) in the browser, `global`
   // on the server, or `this` in some virtual machines. We use `self`
   // instead of `window` for `WebWorker` support.
-  var root = typeof self == 'object' && self.self === self && self ||
-            typeof global == 'object' && global.global === global && global ||
+  var root = (typeof self == 'object' && self.self === self && self) ||
+            (typeof global == 'object' && global.global === global && global) ||
             Function('return this')() ||
             {};
 
@@ -6515,7 +6621,7 @@ var __importDefault;
   // Is a given variable an object?
   function isObject(obj) {
     var type = typeof obj;
-    return type === 'function' || type === 'object' && !!obj;
+    return type === 'function' || (type === 'object' && !!obj);
   }
 
   // Is a given value equal to null?
@@ -6677,7 +6783,7 @@ var __importDefault;
     var hash = {};
     for (var l = keys.length, i = 0; i < l; ++i) hash[keys[i]] = true;
     return {
-      contains: function(key) { return hash[key]; },
+      contains: function(key) { return hash[key] === true; },
       push: function(key) {
         hash[key] = true;
         return keys.push(key);
@@ -6692,7 +6798,7 @@ var __importDefault;
     keys = emulatedSet(keys);
     var nonEnumIdx = nonEnumerableProps.length;
     var constructor = obj.constructor;
-    var proto = isFunction$1(constructor) && constructor.prototype || ObjProto;
+    var proto = (isFunction$1(constructor) && constructor.prototype) || ObjProto;
 
     // Constructor is a special case.
     var prop = 'constructor';
@@ -7895,7 +8001,7 @@ var __importDefault;
   function max(obj, iteratee, context) {
     var result = -Infinity, lastComputed = -Infinity,
         value, computed;
-    if (iteratee == null || typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null) {
+    if (iteratee == null || (typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null)) {
       obj = isArrayLike(obj) ? obj : values(obj);
       for (var i = 0, length = obj.length; i < length; i++) {
         value = obj[i];
@@ -7907,7 +8013,7 @@ var __importDefault;
       iteratee = cb(iteratee, context);
       each(obj, function(v, index, list) {
         computed = iteratee(v, index, list);
-        if (computed > lastComputed || computed === -Infinity && result === -Infinity) {
+        if (computed > lastComputed || (computed === -Infinity && result === -Infinity)) {
           result = v;
           lastComputed = computed;
         }
@@ -7920,7 +8026,7 @@ var __importDefault;
   function min(obj, iteratee, context) {
     var result = Infinity, lastComputed = Infinity,
         value, computed;
-    if (iteratee == null || typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null) {
+    if (iteratee == null || (typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null)) {
       obj = isArrayLike(obj) ? obj : values(obj);
       for (var i = 0, length = obj.length; i < length; i++) {
         value = obj[i];
@@ -7932,13 +8038,26 @@ var __importDefault;
       iteratee = cb(iteratee, context);
       each(obj, function(v, index, list) {
         computed = iteratee(v, index, list);
-        if (computed < lastComputed || computed === Infinity && result === Infinity) {
+        if (computed < lastComputed || (computed === Infinity && result === Infinity)) {
           result = v;
           lastComputed = computed;
         }
       });
     }
     return result;
+  }
+
+  // Safely create a real, live array from anything iterable.
+  var reStrSymbol = /[^\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g;
+  function toArray(obj) {
+    if (!obj) return [];
+    if (isArray(obj)) return slice.call(obj);
+    if (isString(obj)) {
+      // Keep surrogate pair characters together.
+      return obj.match(reStrSymbol);
+    }
+    if (isArrayLike(obj)) return map(obj, identity);
+    return values(obj);
   }
 
   // Sample **n** random values from a collection using the modern version of the
@@ -7950,7 +8069,7 @@ var __importDefault;
       if (!isArrayLike(obj)) obj = values(obj);
       return obj[random(obj.length - 1)];
     }
-    var sample = isArrayLike(obj) ? clone(obj) : values(obj);
+    var sample = toArray(obj);
     var length = getLength(sample);
     n = Math.max(Math.min(n, length), 0);
     var last = length - 1;
@@ -8026,19 +8145,6 @@ var __importDefault;
   var partition = group(function(result, value, pass) {
     result[pass ? 0 : 1].push(value);
   }, true);
-
-  // Safely create a real, live array from anything iterable.
-  var reStrSymbol = /[^\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g;
-  function toArray(obj) {
-    if (!obj) return [];
-    if (isArray(obj)) return slice.call(obj);
-    if (isString(obj)) {
-      // Keep surrogate pair characters together.
-      return obj.match(reStrSymbol);
-    }
-    if (isArrayLike(obj)) return map(obj, identity);
-    return values(obj);
-  }
 
   // Return the number of elements in a collection.
   function size(obj) {
@@ -8200,7 +8306,7 @@ var __importDefault;
   // Complement of zip. Unzip accepts an array of arrays and groups
   // each array's elements on shared indices.
   function unzip(array) {
-    var length = array && max(array, getLength).length || 0;
+    var length = (array && max(array, getLength).length) || 0;
     var result = Array(length);
 
     for (var index = 0; index < length; index++) {
