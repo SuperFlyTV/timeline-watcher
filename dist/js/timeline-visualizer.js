@@ -293,9 +293,9 @@ class TimelineVisualizer extends events_1.EventEmitter {
         }
     }
     getLayers() {
-        const layers = Object.keys(this._layerLabels);
-        layers.sort((a, b) => a.localeCompare(b));
-        return layers;
+        const layers = Object.entries(this._layerLabels);
+        layers.sort((a, b) => a[1] - b[1]);
+        return layers.map(l => l[0]);
     }
     /**
      * Draws the layer labels to the canvas.
