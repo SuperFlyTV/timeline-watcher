@@ -611,11 +611,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._hoveredObjectMap = {}
 		const layersArray: string[] = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : []
 
-		layersArray.sort((a, b) => {
-			if (a > b) return 1
-			if (a < b) return 1
-			return 0
-		})
+		layersArray.sort((a, b) => a.localeCompare(b))
 
 		const layers: Layers = {}
 
