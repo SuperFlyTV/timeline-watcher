@@ -502,10 +502,10 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
 		}
 	}
-	private getLayers() {
-        const layers = Object.keys(this._layerLabels)
-        layers.sort((a,b) => a.localeCompare(b))
-        return layers
+	private getLayers(): string[] {
+        const layers = Object.entries(this._layerLabels)
+        layers.sort((a,b) => a[1]- b[1])
+        return layers.map(l => l[0])
     }
 
 	/**
