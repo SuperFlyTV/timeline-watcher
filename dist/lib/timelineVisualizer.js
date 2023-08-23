@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.TimelineVisualizer = void 0;
 const isEqual = require("lodash.isequal");
 const superfly_timeline_1 = require("superfly-timeline");
 const events_1 = require("events");
@@ -158,7 +159,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
         if (this._timelineResolveAuto) {
             this.updateTimelineResolveWindow();
         }
-        if (this._resolvedStates === undefined) { // If first time this runs
+        if (this._resolvedTimeline === undefined) { // If first time this runs
             // Set timeline start and end times.
             if (options2.time !== undefined) {
                 this._viewStartTime = options2.time;
@@ -181,23 +182,22 @@ class TimelineVisualizer extends events_1.EventEmitter {
         }
         // Resolve the timeline.
         const startResolve = Date.now();
-        const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(this.latestTimeline, options2);
-        let newResolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
-        if (this._resolvedStates === undefined) { // If first time this runs
-            this._resolvedStates = newResolvedStates;
+        const resolvedTimeline = (0, superfly_timeline_1.resolveTimeline)(this.latestTimeline, options2);
+        if (this._resolvedTimeline === undefined) { // If first time this runs
+            this._resolvedTimeline = resolvedTimeline;
         }
         else {
             if (this._drawPlayhead) {
                 // Trim the current timeline:
-                if (newResolvedStates) {
+                if (resolvedTimeline) {
                     // Merge the timelines.
-                    this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates, fromNewTimeline);
+                    this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, resolvedTimeline, fromNewTimeline);
                 }
             }
             else {
                 // Otherwise we only see one timeline at a time.
                 // Overwrite the previous timeline:
-                this._resolvedStates = newResolvedStates;
+                this._resolvedTimeline = resolvedTimeline;
             }
         }
         // Update layers.
@@ -284,13 +284,18 @@ class TimelineVisualizer extends events_1.EventEmitter {
             this._rowsTotalHeight = this._rowHeight * this._numberOfLayers;
         }
     }
+    getLayers() {
+        const layers = Object.keys(this._layerLabels);
+        layers.sort((a, b) => a.localeCompare(b));
+        return layers;
+    }
     /**
      * Draws the layer labels to the canvas.
      */
     drawLayerLabels() {
         let row = 0;
         // Iterate through layers.
-        for (let layerName of Object.keys(this._layerLabels)) {
+        for (let layerName of this.getLayers()) {
             this._canvas.fillStyle = COLOR_LABEL_BACKGROUND;
             this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight);
             this._canvas.fillStyle = TEXT_COLOR;
@@ -368,7 +373,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
      */
     getLayersToDraw() {
         this._hoveredObjectMap = {};
-        const layersArray = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : [];
+        const layersArray = this._resolvedTimeline ? Object.keys(this._resolvedTimeline.layers) : [];
         layersArray.sort((a, b) => {
             if (a > b)
                 return 1;
@@ -394,7 +399,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
         this.drawBackground();
         this.drawLayerLabels();
         // Recompute objects positions
-        this._timelineState = this.getTimelineDrawState(this._resolvedStates);
+        this._timelineState = this.getTimelineDrawState(this._resolvedTimeline);
         // Draw the current state.
         this.drawTimelineState(this._timelineState);
         this.drawPlayhead();
@@ -422,7 +427,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
     }
     /**
      * Returns the draw states for all timeline objects.
-     * @param {ResolvedStates} timeline Timeline to draw.
+     * @param {ResolvedTimeline} timeline Timeline to draw.
      * @returns {TimelineDrawState} State of time-based objects.
      */
     getTimelineDrawState(timeline) {
@@ -661,8 +666,8 @@ class TimelineVisualizer extends events_1.EventEmitter {
                                 // If we are hovering over a timeline object.
                                 if (object.type === 'timelineObject') {
                                     // Get the timeline object and the instance being hovered over.
-                                    if (this._resolvedStates) {
-                                        let timelineObject = this._resolvedStates.objects[object.objectRefId];
+                                    if (this._resolvedTimeline) {
+                                        let timelineObject = this._resolvedTimeline.objects[object.objectRefId];
                                         let instance = timelineObject.resolved.instances.find(instance => instance.id === object.instanceId);
                                         if (instance) {
                                             // Construct hover info.
@@ -834,13 +839,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                     enable: obj.enable,
                     id: obj.id,
                     layer: obj.layer,
-                    resolved: {
-                        instances: [],
-                        levelDeep: obj.resolved.levelDeep,
-                        resolved: obj.resolved.resolved,
-                        resolving: obj.resolved.resolving,
-                        directReferences: obj.resolved.directReferences,
-                    }
+                    resolved: Object.assign(Object.assign({}, obj.resolved), { instances: [] })
                 };
                 newObjects[objId] = newObject;
             }
@@ -850,9 +849,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
             classes: timeline.classes,
             layers: timeline.layers,
             objects: newObjects,
-            options: timeline.options,
             statistics: timeline.statistics,
-            state: timeline.state,
             nextEvents: timeline.nextEvents
         };
     }
@@ -966,7 +963,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 resultingLayers[layer] = [];
             resultingLayers[layer].push(key);
         });
-        return Object.assign({}, present, { objects: resultingObjects, layers: resultingLayers });
+        return Object.assign(Object.assign({}, present), { objects: resultingObjects, layers: resultingLayers });
     }
     updateTimelineResolveWindow() {
         const { start, end } = this.getExpandedStartEndTime(1);

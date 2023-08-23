@@ -83,7 +83,7 @@ export declare class TimelineVisualizer extends EventEmitter {
     /** @private @readonly Proportion of the canvas to be used for the layer labels column. */
     private readonly _layerLabelWidthProportionOfCanvas;
     /** Timeline currently drawn. */
-    private _resolvedStates;
+    private _resolvedTimeline;
     /** Layers on timeline. */
     private _layerLabels;
     /** State of the timeline. */
@@ -191,6 +191,7 @@ export declare class TimelineVisualizer extends EventEmitter {
      */
     private calculateRowHeight;
     private updateLayerLabels;
+    private getLayers;
     /**
      * Draws the layer labels to the canvas.
      */
@@ -222,7 +223,7 @@ export declare class TimelineVisualizer extends EventEmitter {
     private drawTimelineState;
     /**
      * Returns the draw states for all timeline objects.
-     * @param {ResolvedStates} timeline Timeline to draw.
+     * @param {ResolvedTimeline} timeline Timeline to draw.
      * @returns {TimelineDrawState} State of time-based objects.
      */
     private getTimelineDrawState;
@@ -334,9 +335,9 @@ export declare class TimelineVisualizer extends EventEmitter {
     private istimeInView;
     private capXcoordToView;
     /** Zoom factor [pixels / time] */
-    private readonly pixelsWidthPerUnitTime;
+    private get pixelsWidthPerUnitTime();
     /** The range of the view [time] */
-    private readonly viewRange;
+    private get viewRange();
     /** The end time of the view [time] */
-    private readonly viewEndTime;
+    private get viewEndTime();
 }

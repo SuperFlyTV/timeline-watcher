@@ -4,9 +4,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const tslib_1 = require("tslib");
 tslib_1.__exportStar(require("./lib/timelineVisualizer"), exports);
 
-},{"./lib/timelineVisualizer":2,"tslib":16}],2:[function(require,module,exports){
+},{"./lib/timelineVisualizer":2,"tslib":33}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.TimelineVisualizer = void 0;
 const isEqual = require("lodash.isequal");
 const superfly_timeline_1 = require("superfly-timeline");
 const events_1 = require("events");
@@ -165,7 +166,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
         if (this._timelineResolveAuto) {
             this.updateTimelineResolveWindow();
         }
-        if (this._resolvedStates === undefined) { // If first time this runs
+        if (this._resolvedTimeline === undefined) { // If first time this runs
             // Set timeline start and end times.
             if (options2.time !== undefined) {
                 this._viewStartTime = options2.time;
@@ -188,23 +189,22 @@ class TimelineVisualizer extends events_1.EventEmitter {
         }
         // Resolve the timeline.
         const startResolve = Date.now();
-        const resolvedTimeline = superfly_timeline_1.Resolver.resolveTimeline(this.latestTimeline, options2);
-        let newResolvedStates = superfly_timeline_1.Resolver.resolveAllStates(resolvedTimeline);
-        if (this._resolvedStates === undefined) { // If first time this runs
-            this._resolvedStates = newResolvedStates;
+        const resolvedTimeline = (0, superfly_timeline_1.resolveTimeline)(this.latestTimeline, options2);
+        if (this._resolvedTimeline === undefined) { // If first time this runs
+            this._resolvedTimeline = resolvedTimeline;
         }
         else {
             if (this._drawPlayhead) {
                 // Trim the current timeline:
-                if (newResolvedStates) {
+                if (resolvedTimeline) {
                     // Merge the timelines.
-                    this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates, fromNewTimeline);
+                    this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, resolvedTimeline, fromNewTimeline);
                 }
             }
             else {
                 // Otherwise we only see one timeline at a time.
                 // Overwrite the previous timeline:
-                this._resolvedStates = newResolvedStates;
+                this._resolvedTimeline = resolvedTimeline;
             }
         }
         // Update layers.
@@ -291,13 +291,18 @@ class TimelineVisualizer extends events_1.EventEmitter {
             this._rowsTotalHeight = this._rowHeight * this._numberOfLayers;
         }
     }
+    getLayers() {
+        const layers = Object.keys(this._layerLabels);
+        layers.sort((a, b) => a.localeCompare(b));
+        return layers;
+    }
     /**
      * Draws the layer labels to the canvas.
      */
     drawLayerLabels() {
         let row = 0;
         // Iterate through layers.
-        for (let layerName of Object.keys(this._layerLabels)) {
+        for (let layerName of this.getLayers()) {
             this._canvas.fillStyle = COLOR_LABEL_BACKGROUND;
             this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight);
             this._canvas.fillStyle = TEXT_COLOR;
@@ -375,7 +380,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
      */
     getLayersToDraw() {
         this._hoveredObjectMap = {};
-        const layersArray = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : [];
+        const layersArray = this._resolvedTimeline ? Object.keys(this._resolvedTimeline.layers) : [];
         layersArray.sort((a, b) => {
             if (a > b)
                 return 1;
@@ -401,7 +406,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
         this.drawBackground();
         this.drawLayerLabels();
         // Recompute objects positions
-        this._timelineState = this.getTimelineDrawState(this._resolvedStates);
+        this._timelineState = this.getTimelineDrawState(this._resolvedTimeline);
         // Draw the current state.
         this.drawTimelineState(this._timelineState);
         this.drawPlayhead();
@@ -429,7 +434,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
     }
     /**
      * Returns the draw states for all timeline objects.
-     * @param {ResolvedStates} timeline Timeline to draw.
+     * @param {ResolvedTimeline} timeline Timeline to draw.
      * @returns {TimelineDrawState} State of time-based objects.
      */
     getTimelineDrawState(timeline) {
@@ -668,8 +673,8 @@ class TimelineVisualizer extends events_1.EventEmitter {
                                 // If we are hovering over a timeline object.
                                 if (object.type === 'timelineObject') {
                                     // Get the timeline object and the instance being hovered over.
-                                    if (this._resolvedStates) {
-                                        let timelineObject = this._resolvedStates.objects[object.objectRefId];
+                                    if (this._resolvedTimeline) {
+                                        let timelineObject = this._resolvedTimeline.objects[object.objectRefId];
                                         let instance = timelineObject.resolved.instances.find(instance => instance.id === object.instanceId);
                                         if (instance) {
                                             // Construct hover info.
@@ -841,13 +846,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                     enable: obj.enable,
                     id: obj.id,
                     layer: obj.layer,
-                    resolved: {
-                        instances: [],
-                        levelDeep: obj.resolved.levelDeep,
-                        resolved: obj.resolved.resolved,
-                        resolving: obj.resolved.resolving,
-                        directReferences: obj.resolved.directReferences,
-                    }
+                    resolved: Object.assign(Object.assign({}, obj.resolved), { instances: [] })
                 };
                 newObjects[objId] = newObject;
             }
@@ -857,9 +856,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
             classes: timeline.classes,
             layers: timeline.layers,
             objects: newObjects,
-            options: timeline.options,
             statistics: timeline.statistics,
-            state: timeline.state,
             nextEvents: timeline.nextEvents
         };
     }
@@ -973,7 +970,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 resultingLayers[layer] = [];
             resultingLayers[layer].push(key);
         });
-        return Object.assign({}, present, { objects: resultingObjects, layers: resultingLayers });
+        return Object.assign(Object.assign({}, present), { objects: resultingObjects, layers: resultingLayers });
     }
     updateTimelineResolveWindow() {
         const { start, end } = this.getExpandedStartEndTime(1);
@@ -1059,7 +1056,9 @@ class TimelineVisualizer extends events_1.EventEmitter {
 }
 exports.TimelineVisualizer = TimelineVisualizer;
 
-},{"events":3,"lodash.isequal":4,"superfly-timeline":7}],3:[function(require,module,exports){
+},{"events":4,"lodash.isequal":5,"superfly-timeline":13}],3:[function(require,module,exports){
+
+},{}],4:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1584,8 +1583,8 @@ function functionBindPolyfill(context) {
   };
 }
 
-},{}],4:[function(require,module,exports){
-(function (global){
+},{}],5:[function(require,module,exports){
+(function (global){(function (){
 /**
  * Lodash (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -3435,13 +3434,24 @@ function stubFalse() {
 
 module.exports = isEqual;
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const tslib_1 = require("tslib");
+tslib_1.__exportStar(require("./expression"), exports);
+tslib_1.__exportStar(require("./resolvedTimeline"), exports);
+tslib_1.__exportStar(require("./resolver"), exports);
+tslib_1.__exportStar(require("./state"), exports);
+tslib_1.__exportStar(require("./timeline"), exports);
+tslib_1.__exportStar(require("./types"), exports);
+
+},{"./expression":6,"./resolvedTimeline":8,"./resolver":9,"./state":10,"./timeline":11,"./types":12,"tslib":32}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventType = void 0;
@@ -3452,492 +3462,3184 @@ var EventType;
     EventType[EventType["KEYFRAME"] = 2] = "KEYFRAME";
 })(EventType = exports.EventType || (exports.EventType = {}));
 
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateKeyframe = exports.validateObject = exports.validateTimeline = exports.Resolver = void 0;
-const tslib_1 = require("tslib");
-(0, tslib_1.__exportStar)(require("./api/enums"), exports);
-(0, tslib_1.__exportStar)(require("./api/api"), exports);
-var resolver_1 = require("./resolver/resolver");
-Object.defineProperty(exports, "Resolver", { enumerable: true, get: function () { return resolver_1.Resolver; } });
-var validate_1 = require("./resolver/validate");
-Object.defineProperty(exports, "validateTimeline", { enumerable: true, get: function () { return validate_1.validateTimeline; } });
-Object.defineProperty(exports, "validateObject", { enumerable: true, get: function () { return validate_1.validateObject; } });
-Object.defineProperty(exports, "validateKeyframe", { enumerable: true, get: function () { return validate_1.validateKeyframe; } });
 
-},{"./api/api":5,"./api/enums":6,"./resolver/resolver":12,"./resolver/validate":14,"tslib":15}],8:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanCacheResult = exports.cacheResult = exports.applyParentInstances = exports.setInstanceStartTime = exports.setInstanceEndTime = exports.resetId = exports.getId = exports.joinCaps = exports.addCapsToResuming = exports.joinReferences = exports.isReference = exports.capInstances = exports.applyRepeatingInstances = exports.operateOnArrays = exports.invertInstances = exports.convertEventsToInstances = exports.cleanInstances = exports.sortEvents = exports.isNumeric = exports.isConstant = exports.extendMandadory = void 0;
-const _ = require("underscore");
+
+},{}],11:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+
+},{}],12:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+
+},{}],13:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.onCloseCleanup = exports.validateExpression = exports.wrapInnerExpressions = exports.simplifyExpression = exports.interpretExpression = exports.applyKeyframeContent = exports.validateReferenceString = exports.validateKeyframe = exports.validateObject = exports.validateTimeline = exports.getResolvedState = exports.resolveTimeline = void 0;
+const tslib_1 = require("tslib");
+tslib_1.__exportStar(require("./api"), exports);
+const StateHandler_1 = require("./resolver/StateHandler");
+const ExpressionHandler_1 = require("./resolver/ExpressionHandler");
+const ResolverHandler_1 = require("./resolver/ResolverHandler");
+const TimelineValidator_1 = require("./resolver/TimelineValidator");
 /**
- * Somewhat like _.extend, but with strong types & mandated additional properties
- * @param original Object to be extended
- * @param extendObj properties to add
+ * Resolves a timeline, i.e. resolves the references between objects
+ * and calculates the absolute times for all objects in the timeline.
  */
-function extendMandadory(original, extendObj) {
-    return _.extend(original, extendObj);
+function resolveTimeline(timeline, options) {
+    const resolverInstance = new ResolverHandler_1.ResolverHandler(options);
+    return resolverInstance.resolveTimeline(timeline);
 }
-exports.extendMandadory = extendMandadory;
-function isConstant(str) {
-    return !!(isNumeric(str) || (_.isString(str) && (str.match(/^true$/) || str.match(/^false$/))));
-}
-exports.isConstant = isConstant;
-function isNumeric(str) {
-    if (str === null)
-        return false;
-    if (_.isNumber(str))
-        return true;
-    if (_.isString(str))
-        return !!(str.match(/^[-+]?[0-9.]+$/) && !_.isNaN(parseFloat(str)));
-    return false;
-}
-exports.isNumeric = isNumeric;
-function sortEvents(events) {
-    return events.sort((a, b) => {
-        if (a.time > b.time)
-            return 1;
-        if (a.time < b.time)
-            return -1;
-        const aId = a.data && (a.data.id || (a.data.instance && a.data.instance.id));
-        const bId = b.data && (b.data.id || (b.data.instance && b.data.instance.id));
-        if (aId && bId && aId === bId) {
-            // If the event refer to the same ID, let the ending event be first:
-            if (a.value && !b.value)
-                return -1;
-            if (!a.value && b.value)
-                return 1;
-        }
-        if (a.value && !b.value)
-            return 1;
-        if (!a.value && b.value)
-            return -1;
-        return 0;
-    });
-}
-exports.sortEvents = sortEvents;
+exports.resolveTimeline = resolveTimeline;
 /**
- * Clean up instances, join overlapping etc..
- * @param instances
+ * Retrieve the state for a certain point in time.
+ * The state contains all objects that are active at that point in time.
+ * @param resolvedTimeline
+ * @param time
+ * @param eventLimit
  */
-function cleanInstances(instances, allowMerge, allowZeroGaps = false) {
-    // First, optimize for certain common situations:
-    if (instances.length === 0)
-        return [];
-    if (instances.length === 1)
-        return instances;
-    const events = [];
-    for (let i = 0; i < instances.length; i++) {
-        const instance = instances[i];
-        events.push({
-            time: instance.start,
-            value: true,
-            data: { instance: instance },
-            references: instance.references,
-        });
-        if (instance.end !== null) {
-            events.push({
-                time: instance.end,
-                value: false,
-                data: { instance: instance },
-                references: instance.references,
-            });
-        }
-    }
-    return convertEventsToInstances(events, allowMerge, allowZeroGaps);
+function getResolvedState(resolvedTimeline, time, eventLimit = 0) {
+    const stateHandler = new StateHandler_1.StateHandler();
+    return stateHandler.getState(resolvedTimeline, time, eventLimit);
 }
-exports.cleanInstances = cleanInstances;
-function convertEventsToInstances(events, allowMerge, allowZeroGaps = false) {
-    sortEvents(events);
-    const activeInstances = {};
-    let activeInstanceId = null;
-    let previousActive = false;
-    const negativeInstances = {};
-    let previousNegative = false;
-    let negativeInstanceId = null;
-    const returnInstances = [];
-    for (let i = 0; i < events.length; i++) {
-        const event = events[i];
-        const eventId = event.data.id || event.data.instance.id;
-        const lastInstance = returnInstances[returnInstances.length - 1];
-        if (event.value) {
-            activeInstances[eventId] = event;
-            delete negativeInstances[eventId];
+exports.getResolvedState = getResolvedState;
+/**
+ * Validates all objects in the timeline. Throws an error if something's wrong
+ * @param timeline The timeline to validate
+ * @param strict Set to true to enable some optional strict rules. Set this to true to increase future compatibility.
+ */
+function validateTimeline(timeline, strict) {
+    const validator = new TimelineValidator_1.TimelineValidator();
+    validator.validateTimeline(timeline, strict);
+}
+exports.validateTimeline = validateTimeline;
+/**
+ * Validates a Timeline-object. Throws an error if something's wrong
+ * @param timeline The timeline to validate
+ * @param strict Set to true to enable some optional strict rules. Set this to true to increase future compatibility.
+ */
+function validateObject(obj, strict) {
+    const validator = new TimelineValidator_1.TimelineValidator();
+    validator.validateObject(obj, strict);
+}
+exports.validateObject = validateObject;
+/**
+ * Validates a Timeline-keyframe. Throws an error if something's wrong
+ * @param timeline The timeline to validate
+ * @param strict Set to true to enable some optional strict rules. Set this to true to increase future compatibility.
+ */
+function validateKeyframe(keyframe, strict) {
+    const validator = new TimelineValidator_1.TimelineValidator();
+    validator.validateKeyframe(keyframe, strict);
+}
+exports.validateKeyframe = validateKeyframe;
+/**
+ * Validates a string that is used in Timeline as a reference (an id, a class or layer)
+ * @param str The string to validate
+ * @param strict Set to true to enable some optional strict rules. Set this to true to increase future compatibility.
+ */
+function validateReferenceString(str, strict) {
+    TimelineValidator_1.TimelineValidator.validateReferenceString(str, strict);
+}
+exports.validateReferenceString = validateReferenceString;
+/**
+ * Apply keyframe content onto its parent content.
+ * The keyframe content is deeply-applied onto the parent content.
+ * Note: This function mutates the parentContent.
+ */
+function applyKeyframeContent(parentContent, keyframeContent) {
+    StateHandler_1.StateHandler.applyKeyframeContent(parentContent, keyframeContent);
+}
+exports.applyKeyframeContent = applyKeyframeContent;
+let expressionHandler = undefined;
+function getExpressionHandler() {
+    if (!expressionHandler)
+        expressionHandler = new ExpressionHandler_1.ExpressionHandler(true);
+    return expressionHandler;
+}
+function interpretExpression(expression) {
+    return getExpressionHandler().interpretExpression(expression);
+}
+exports.interpretExpression = interpretExpression;
+function simplifyExpression(expr0) {
+    return getExpressionHandler().simplifyExpression(expr0);
+}
+exports.simplifyExpression = simplifyExpression;
+function wrapInnerExpressions(words) {
+    return getExpressionHandler().wrapInnerExpressions(words);
+}
+exports.wrapInnerExpressions = wrapInnerExpressions;
+function validateExpression(operatorList, expr0, breadcrumbs) {
+    return getExpressionHandler().validateExpression(operatorList, expr0, breadcrumbs);
+}
+exports.validateExpression = validateExpression;
+/**
+ * If you have called any of the manual expression-functions, such as interpretExpression(),
+ * you could call this to manually clean up an internal cache, to ensure your application quits cleanly.
+ */
+function onCloseCleanup() {
+    if (expressionHandler)
+        expressionHandler.clearCache();
+}
+exports.onCloseCleanup = onCloseCleanup;
+
+},{"./api":7,"./resolver/ExpressionHandler":15,"./resolver/ResolverHandler":20,"./resolver/StateHandler":21,"./resolver/TimelineValidator":22,"tslib":32}],14:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.hashTimelineObject = exports.CacheHandler = void 0;
+const lib_1 = require("./lib/lib");
+const performance_1 = require("./lib/performance");
+const reference_1 = require("./lib/reference");
+const timeline_1 = require("./lib/timeline");
+class CacheHandler {
+    constructor(cache, resolvedTimeline) {
+        this.resolvedTimeline = resolvedTimeline;
+        if (!cache.objHashes)
+            cache.objHashes = {};
+        if (!cache.objects)
+            cache.objects = {};
+        if (!cache.canBeUsed) {
+            // Reset the cache:
+            cache.objHashes = {};
+            cache.objects = {};
+            this.canUseIncomingCache = false;
         }
         else {
-            delete activeInstances[eventId];
-            negativeInstances[eventId] = event;
+            this.canUseIncomingCache = true;
         }
-        if (Object.keys(activeInstances).length) {
-            // There is an active instance
-            if (!allowMerge && !allowZeroGaps && lastInstance && previousNegative) {
-                // There is previously an inActive (negative) instance
-                lastInstance.start = event.time;
+        // cache.canBeUsed will be set in this.persistData()
+        cache.canBeUsed = false;
+        this.cache = cache;
+    }
+    debug(...args) {
+        if (this.resolvedTimeline.options.debug)
+            console.log(...args);
+    }
+    determineChangedObjects() {
+        const toc = (0, performance_1.tic)('  cache.determineChangedObjects');
+        // Go through all new objects, and determine whether they have changed:
+        const allNewObjects = {};
+        const changedReferences = {};
+        const addChangedObject = (obj) => {
+            const references = this.getAllReferencesThisObjectAffects(obj);
+            for (const ref of references) {
+                changedReferences[ref] = true;
+            }
+        };
+        for (const obj of this.resolvedTimeline.objectsMap.values()) {
+            const oldHash = this.cache.objHashes[obj.id];
+            const newHash = hashTimelineObject(obj);
+            allNewObjects[obj.id] = true;
+            if (!oldHash)
+                this.debug(`Cache: Object "${obj.id}" is new`);
+            else if (oldHash !== newHash)
+                this.debug(`Cache: Object "${obj.id}" has changed`);
+            if (
+            // Object is new:
+            !oldHash ||
+                // Object has changed:
+                oldHash !== newHash) {
+                this.cache.objHashes[obj.id] = newHash;
+                addChangedObject(obj);
+                const oldObj = this.cache.objects[obj.id];
+                if (oldObj)
+                    addChangedObject(oldObj);
             }
             else {
-                const o = handleActiveInstances(event, lastInstance, activeInstanceId, eventId, activeInstances, allowMerge, allowZeroGaps);
-                activeInstanceId = o.activeInstanceId;
-                if (o.returnInstance) {
-                    returnInstances.push(o.returnInstance);
+                // No timing-affecting changes detected
+                /* istanbul ignore if */
+                if (!oldHash)
+                    this.debug(`Cache: Object "${obj.id}" is similar`);
+                // Even though the timeline-properties hasn't changed,
+                // the content (and other properties) might have:
+                const oldObj = this.cache.objects[obj.id];
+                /* istanbul ignore if */
+                if (!oldObj) {
+                    console.error('oldHash', oldHash);
+                    console.error('ids', Object.keys(this.cache.objects));
+                    throw new Error(`Internal Error: obj "${obj.id}" not found in cache, even though hashes match!`);
+                }
+                this.cache.objects[obj.id] = {
+                    ...obj,
+                    resolved: oldObj.resolved,
+                };
+            }
+        }
+        if (this.canUseIncomingCache) {
+            // Go through all old hashes, removing the ones that doesn't exist anymore
+            for (const objId in this.cache.objects) {
+                if (!allNewObjects[objId]) {
+                    const obj = this.cache.objects[objId];
+                    delete this.cache.objHashes[objId];
+                    addChangedObject(obj);
                 }
             }
-            previousActive = true;
-            previousNegative = false;
+            // Invalidate objects, by gradually removing the invalidated ones from validObjects
+            // Prepare validObjects:
+            const validObjects = {};
+            for (const obj of this.resolvedTimeline.objectsMap.values()) {
+                validObjects[obj.id] = obj;
+            }
+            /** All references that depend on another reference (ie objects, classs or layers): */
+            const affectReferenceMap = {};
+            for (const obj of this.resolvedTimeline.objectsMap.values()) {
+                // Add everything that this object affects:
+                const cachedObj = this.cache.objects[obj.id];
+                let affectedReferences = this.getAllReferencesThisObjectAffects(obj);
+                if (cachedObj) {
+                    affectedReferences = (0, reference_1.joinReferences)(affectedReferences, this.getAllReferencesThisObjectAffects(cachedObj));
+                }
+                for (let i = 0; i < affectedReferences.length; i++) {
+                    const ref = affectedReferences[i];
+                    const objRef = `#${obj.id}`;
+                    if (ref !== objRef) {
+                        if (!affectReferenceMap[objRef])
+                            affectReferenceMap[objRef] = [];
+                        affectReferenceMap[objRef].push(ref);
+                    }
+                }
+                // Add everything that this object is affected by:
+                if (changedReferences[`#${obj.id}`]) {
+                    // The object is directly said to be invalid, no need to add it to referencingObjects,
+                    // since it'll be easily invalidated anyway later
+                }
+                else {
+                    // Note: we only have to check for the OLD object, since if the old and the new object differs,
+                    // that would mean it'll be directly invalidated anyway.
+                    if (cachedObj) {
+                        // Fetch all references for the object from the last time it was resolved.
+                        // Note: This can be done, since _if_ the object was changed in any way since last resolve
+                        // it'll be invalidated anyway
+                        const dependOnReferences = cachedObj.resolved.directReferences;
+                        for (let i = 0; i < dependOnReferences.length; i++) {
+                            const ref = dependOnReferences[i];
+                            if (!affectReferenceMap[ref])
+                                affectReferenceMap[ref] = [];
+                            affectReferenceMap[ref].push(`#${obj.id}`);
+                        }
+                    }
+                }
+            }
+            // Invalidate all changed objects, and recursively invalidate all objects that reference those objects:
+            const handledReferences = {};
+            for (const reference of Object.keys(changedReferences)) {
+                this.invalidateObjectsWithReference(handledReferences, reference, affectReferenceMap, validObjects);
+            }
+            // The objects that are left in validObjects at this point are still valid.
+            // We can reuse the old resolving for those:
+            for (const obj of Object.values(validObjects)) {
+                if (!this.cache.objects[obj.id])
+                    /* istanbul ignore next */
+                    throw new Error(`Something went wrong: "${obj.id}" does not exist in cache.resolvedTimeline.objects`);
+                this.resolvedTimeline.objectsMap.set(obj.id, this.cache.objects[obj.id]);
+            }
+        }
+        toc();
+    }
+    persistData() {
+        const toc = (0, performance_1.tic)('  cache.persistData');
+        if (this.resolvedTimeline.resolveError) {
+            // If there was a resolve error, clear the cache:
+            this.cache.objHashes = {};
+            this.cache.objects = {};
+            this.cache.canBeUsed = false;
         }
         else {
-            // No instances are active
-            if (lastInstance && previousActive) {
-                lastInstance.end = event.time;
+            this.cache.objects = (0, lib_1.mapToObject)(this.resolvedTimeline.objectsMap);
+            this.cache.canBeUsed = true;
+        }
+        toc();
+    }
+    getAllReferencesThisObjectAffects(newObj) {
+        const references = [`#${newObj.id}`];
+        if (newObj.classes) {
+            for (const className of newObj.classes) {
+                references.push(`.${className}`);
+            }
+        }
+        if ((0, timeline_1.objHasLayer)(newObj))
+            references.push(`$${newObj.layer}`);
+        if (newObj.children) {
+            for (const child of newObj.children) {
+                references.push(`#${child.id}`);
+            }
+        }
+        return references;
+    }
+    /** Invalidate all changed objects, and recursively invalidate all objects that reference those objects */
+    invalidateObjectsWithReference(handledReferences, reference, affectReferenceMap, validObjects) {
+        if (handledReferences[reference])
+            return; // to avoid infinite loops
+        handledReferences[reference] = true;
+        if ((0, reference_1.isObjectReference)(reference)) {
+            const objId = (0, reference_1.getRefObjectId)(reference);
+            if (validObjects[objId]) {
+                delete validObjects[objId];
+            }
+        }
+        // Invalidate all objects that depend on any of the references that this reference affects:
+        const affectedReferences = affectReferenceMap[reference];
+        if (affectedReferences) {
+            for (let i = 0; i < affectedReferences.length; i++) {
+                const referencingReference = affectedReferences[i];
+                this.invalidateObjectsWithReference(handledReferences, referencingReference, affectReferenceMap, validObjects);
+            }
+        }
+    }
+}
+exports.CacheHandler = CacheHandler;
+/** Return a "hash-string" which changes whenever anything that affects timing of a timeline-object has changed. */
+function hashTimelineObject(obj) {
+    /*
+    Note: The following properties are ignored, as they don't affect timing or resolving:
+     * id
+     * children
+     * keyframes
+     * isGroup
+     * content
+     */
+    return `${JSON.stringify(obj.enable)},${+!!obj.disabled},${obj.priority}',${obj.resolved.parentId},${+obj.resolved
+        .isKeyframe},${obj.classes ? obj.classes.join('.') : ''},${obj.layer},${+!!obj.seamless}`;
+}
+exports.hashTimelineObject = hashTimelineObject;
+
+},{"./lib/lib":28,"./lib/performance":29,"./lib/reference":30,"./lib/timeline":31}],15:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ExpressionHandler = exports.REGEXP_OPERATORS = exports.OPERATORS = void 0;
+const lib_1 = require("./lib/lib");
+const cache_1 = require("./lib/cache");
+const expression_1 = require("./lib/expression");
+exports.OPERATORS = ['&', '|', '+', '-', '*', '/', '%', '!'];
+exports.REGEXP_OPERATORS = new RegExp('([' + exports.OPERATORS.map((o) => '\\' + o).join('') + '\\(\\)])', 'g');
+class ExpressionHandler {
+    constructor(autoClearCache, skipValidation) {
+        this.skipValidation = skipValidation;
+        this.cache = new cache_1.Cache(autoClearCache);
+    }
+    interpretExpression(expression) {
+        if ((0, expression_1.isNumericExpr)(expression)) {
+            return parseFloat(expression);
+        }
+        else if (typeof expression === 'string') {
+            const expressionString = expression;
+            return this.cache.cacheResult(expressionString, () => {
+                const expr = expressionString.replace(exports.REGEXP_OPERATORS, ' $1 '); // Make sure there's a space between every operator & operand
+                const words = (0, lib_1.compact)(expr.split(' '));
+                if (words.length === 0)
+                    return null; // empty expression
+                // Fix special case: a + - b
+                for (let i = words.length - 2; i >= 1; i--) {
+                    if ((words[i] === '-' || words[i] === '+') && wordIsOperator(exports.OPERATORS, words[i - 1])) {
+                        words[i] = words[i] + words[i + 1];
+                        words.splice(i + 1, 1);
+                    }
+                }
+                const innerExpression = this.wrapInnerExpressions(words);
+                if (innerExpression.rest.length)
+                    throw new Error(`interpretExpression: syntax error: parentheses don't add up in "${expr}".`);
+                if (innerExpression.inner.length % 2 !== 1) {
+                    throw new Error(`interpretExpression: operands & operators don't add up: "${innerExpression.inner.join(' ')}".`);
+                }
+                const returnExpression = this.words2Expression(exports.OPERATORS, innerExpression.inner);
+                if (!this.skipValidation)
+                    this.validateExpression(exports.OPERATORS, returnExpression);
+                return returnExpression;
+            }, 60 * 60 * 1000 // 1 hour
+            );
+        }
+        else {
+            return expression;
+        }
+    }
+    /** Try to simplify an expression, this includes:
+     * * Combine constant operands, using arithmetic operators
+     * ...more to come?
+     */
+    simplifyExpression(expr0) {
+        const expr = typeof expr0 === 'string' ? this.interpretExpression(expr0) : expr0;
+        if (!expr)
+            return expr;
+        if (isExpressionObject(expr)) {
+            const l = this.simplifyExpression(expr.l);
+            const o = expr.o;
+            const r = this.simplifyExpression(expr.r);
+            if (typeof l === 'number' && typeof r === 'number') {
+                // The operands can be combined:
+                switch (o) {
+                    case '+':
+                        return l + r;
+                    case '-':
+                        return l - r;
+                    case '*':
+                        return l * r;
+                    case '/':
+                        return l / r;
+                    case '%':
+                        return l % r;
+                    default:
+                        return { l, o, r };
+                }
+            }
+            return { l, o, r };
+        }
+        return expr;
+    }
+    // Turns ['a', '(', 'b', 'c', ')'] into ['a', ['b', 'c']]
+    // or ['a', '&', '!', 'b'] into ['a', '&', ['', '!', 'b']]
+    wrapInnerExpressions(words) {
+        for (let i = 0; i < words.length; i++) {
+            switch (words[i]) {
+                case '(': {
+                    const tmp = this.wrapInnerExpressions(words.slice(i + 1));
+                    // insert inner expression and remove tha
+                    words[i] = tmp.inner;
+                    words.splice(i + 1, 99999, ...tmp.rest);
+                    break;
+                }
+                case ')':
+                    return {
+                        inner: words.slice(0, i),
+                        rest: words.slice(i + 1),
+                    };
+                case '!': {
+                    const tmp = this.wrapInnerExpressions(words.slice(i + 1));
+                    // insert inner expression after the '!'
+                    words[i] = ['', '!'].concat(tmp.inner);
+                    words.splice(i + 1, 99999, ...tmp.rest);
+                    break;
+                }
+            }
+        }
+        return {
+            inner: words,
+            rest: [],
+        };
+    }
+    /** Validates an expression. Returns true on success, throws error if not */
+    validateExpression(operatorList, expr0, breadcrumbs) {
+        if (!breadcrumbs)
+            breadcrumbs = 'ROOT';
+        if ((0, lib_1.isObject)(expr0) && !(0, lib_1.isArray)(expr0)) {
+            const expr = expr0;
+            if (expr.l === undefined)
+                throw new Error(`validateExpression: ${breadcrumbs}.l missing in ${JSON.stringify(expr)}`);
+            if (expr.o === undefined)
+                throw new Error(`validateExpression: ${breadcrumbs}.o missing in ${JSON.stringify(expr)}`);
+            if (expr.r === undefined)
+                throw new Error(`validateExpression: ${breadcrumbs}.r missing in ${JSON.stringify(expr)}`);
+            if (typeof expr.o !== 'string')
+                throw new Error(`validateExpression: ${breadcrumbs}.o not a string`);
+            if (!wordIsOperator(operatorList, expr.o))
+                throw new Error(breadcrumbs + '.o not valid: "' + expr.o + '"');
+            return (this.validateExpression(operatorList, expr.l, breadcrumbs + '.l') &&
+                this.validateExpression(operatorList, expr.r, breadcrumbs + '.r'));
+        }
+        else if (expr0 !== null && typeof expr0 !== 'string' && typeof expr0 !== 'number') {
+            throw new Error(`validateExpression: ${breadcrumbs} is of invalid type`);
+        }
+        return true;
+    }
+    clearCache() {
+        this.cache.clear();
+    }
+    words2Expression(operatorList, words) {
+        /* istanbul ignore if */
+        if (!words?.length)
+            throw new Error('words2Expression: syntax error: unbalanced expression');
+        while (words.length === 1 && words[0] !== null && (0, lib_1.isArray)(words[0]))
+            words = words[0];
+        if (words.length === 1)
+            return words[0];
+        // Find the operator with the highest priority:
+        let operatorI = -1;
+        for (let i = 0; i < operatorList.length; i++) {
+            const operator = operatorList[i];
+            if (operatorI === -1) {
+                operatorI = words.lastIndexOf(operator);
+            }
+        }
+        if (operatorI !== -1) {
+            const l = words.slice(0, operatorI);
+            const r = words.slice(operatorI + 1);
+            const expr = {
+                l: this.words2Expression(operatorList, l),
+                o: words[operatorI],
+                r: this.words2Expression(operatorList, r),
+            };
+            return expr;
+        }
+        else
+            throw new Error('words2Expression: syntax error: operator not found: "' + words.join(' ') + '"');
+    }
+}
+exports.ExpressionHandler = ExpressionHandler;
+function isExpressionObject(expr) {
+    return (typeof expr === 'object' &&
+        expr !== null &&
+        expr.l !== undefined &&
+        expr.o !== undefined &&
+        expr.r !== undefined);
+}
+function wordIsOperator(operatorList, word) {
+    if (operatorList.indexOf(word) !== -1)
+        return true;
+    return false;
+}
+
+},{"./lib/cache":23,"./lib/expression":26,"./lib/lib":28}],16:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InstanceHandler = void 0;
+const cap_1 = require("./lib/cap");
+const event_1 = require("./lib/event");
+const instance_1 = require("./lib/instance");
+const lib_1 = require("./lib/lib");
+const reference_1 = require("./lib/reference");
+class InstanceHandler {
+    constructor(resolvedTimeline) {
+        this.resolvedTimeline = resolvedTimeline;
+    }
+    invertInstances(instances) {
+        if (instances.length) {
+            instances = this.cleanInstances(instances, true, true);
+            const invertedInstances = [];
+            if (instances[0].start !== 0) {
+                invertedInstances.push({
+                    id: this.resolvedTimeline.getInstanceId(),
+                    isFirst: true,
+                    start: 0,
+                    end: null,
+                    references: (0, reference_1.joinReferences)(instances[0].references, `@${instances[0].id}`),
+                });
+            }
+            for (let i = 0; i < instances.length; i++) {
+                const instance = instances[i];
+                const lastInstance = (0, lib_1.last)(invertedInstances);
+                if (lastInstance) {
+                    lastInstance.end = instance.start;
+                }
+                if (instance.end !== null) {
+                    invertedInstances.push({
+                        id: this.resolvedTimeline.getInstanceId(),
+                        start: instance.end,
+                        end: null,
+                        references: (0, reference_1.joinReferences)(instance.references, `@${instance.id}`),
+                        caps: instance.caps,
+                    });
+                }
+            }
+            return invertedInstances;
+        }
+        else {
+            return [
+                {
+                    id: this.resolvedTimeline.getInstanceId(),
+                    isFirst: true,
+                    start: 0,
+                    end: null,
+                    references: [],
+                },
+            ];
+        }
+    }
+    /**
+     * Converts a list of events into a list of instances.
+     * @param events The list of start- and end- events
+     * @param allowMerge If true, will merge instances that overlap into one.
+     * @param allowZeroGaps If true, allows zero-length gaps between instances. If false, will combine the two into one instance.
+     * @param omitOriginalStartEnd Of true, will not keep .originalStart and .originalEnd of the instances
+     */
+    convertEventsToInstances(events, allowMerge, allowZeroGaps = false, omitOriginalStartEnd = false) {
+        (0, event_1.sortEvents)(events);
+        const activeInstances = {};
+        let activeInstanceId = null;
+        let previousActive = false;
+        const negativeInstances = {};
+        let previousNegative = false;
+        let negativeInstanceId = null;
+        const returnInstances = [];
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i];
+            const eventId = event.data.id ?? event.data.instance.id;
+            const lastInstance = returnInstances[returnInstances.length - 1];
+            if (event.value) {
+                // Start-event
+                activeInstances[eventId] = event;
+                delete negativeInstances[eventId];
             }
             else {
-                if (Object.keys(negativeInstances).length) {
+                // End-event
+                delete activeInstances[eventId];
+                negativeInstances[eventId] = event;
+            }
+            if (Object.keys(activeInstances).length) {
+                // There is an active instance
+                if (!allowMerge && !allowZeroGaps && lastInstance && previousNegative) {
+                    // There is previously an inActive (negative) instance
+                    lastInstance.start = event.time;
+                }
+                else {
+                    const o = this.handleActiveInstances(event, lastInstance, activeInstanceId, eventId, activeInstances, allowMerge, allowZeroGaps);
+                    activeInstanceId = o.activeInstanceId;
+                    if (o.returnInstance) {
+                        let newInstance = o.returnInstance;
+                        if (omitOriginalStartEnd) {
+                            newInstance = { ...newInstance };
+                            newInstance.originalStart = undefined;
+                            newInstance.originalEnd = undefined;
+                        }
+                        returnInstances.push(newInstance);
+                    }
+                }
+                previousActive = true;
+                previousNegative = false;
+            }
+            else {
+                // No instances are active
+                if (lastInstance && previousActive) {
+                    lastInstance.end = event.time;
+                }
+                else if (Object.keys(negativeInstances).length && !event.data.notANegativeInstance) {
                     // There is a negative instance running
-                    const o = handleActiveInstances(event, lastInstance, negativeInstanceId, eventId, negativeInstances, allowMerge, allowZeroGaps);
+                    const o = this.handleActiveInstances(event, lastInstance, negativeInstanceId, eventId, negativeInstances, allowMerge, allowZeroGaps);
                     negativeInstanceId = o.activeInstanceId;
                     if (o.returnInstance) {
-                        returnInstances.push({
+                        const newInstance = {
                             ...o.returnInstance,
-                            start: o.returnInstance.end || 0,
+                            start: o.returnInstance.end ?? 0,
                             end: o.returnInstance.start,
-                        });
+                        };
+                        if (omitOriginalStartEnd) {
+                            newInstance.originalStart = undefined;
+                            newInstance.originalEnd = undefined;
+                        }
+                        returnInstances.push(newInstance);
                     }
                     previousNegative = true;
                 }
+                previousActive = false;
             }
-            previousActive = false;
         }
-    }
-    return returnInstances;
-}
-exports.convertEventsToInstances = convertEventsToInstances;
-function handleActiveInstances(event, lastInstance, activeInstanceId, eventId, activeInstances, allowMerge, allowZeroGaps = false) {
-    let returnInstance = null;
-    if (!allowMerge &&
-        event.value &&
-        lastInstance &&
-        lastInstance.end === null &&
-        activeInstanceId !== null &&
-        activeInstanceId !== eventId) {
-        // Start a new instance:
-        lastInstance.end = event.time;
-        returnInstance = {
-            id: getId(),
-            start: event.time,
-            end: null,
-            references: event.references,
-            originalEnd: event.data.instance.originalEnd,
-            originalStart: event.data.instance.originalStart,
-        };
-        activeInstanceId = eventId;
-    }
-    else if (!allowMerge && !event.value && lastInstance && activeInstanceId === eventId) {
-        // The active instance stopped playing, but another is still playing
-        const latestInstance = _.reduce(activeInstances, (memo, instanceEvent, id) => {
-            if (memo === null || memo.event.time < instanceEvent.time) {
-                return {
-                    event: instanceEvent,
-                    id: id,
-                };
+        for (const instance of returnInstances) {
+            if (instance.end !== null && instance.end < instance.start) {
+                // Don't allow negative durations, set it to zero instead:
+                instance.end = instance.start;
             }
-            return memo;
-        }, null);
-        if (latestInstance) {
-            // Restart that instance now:
+        }
+        return returnInstances;
+    }
+    handleActiveInstances(event, lastInstance, activeInstanceId, eventId, activeInstances, allowMerge, allowZeroGaps = false) {
+        let returnInstance = null;
+        if (!allowMerge &&
+            event.value &&
+            lastInstance &&
+            lastInstance.end === null &&
+            activeInstanceId !== null &&
+            activeInstanceId !== eventId) {
+            // Start a new instance:
             lastInstance.end = event.time;
             returnInstance = {
-                id: eventId + '_' + getId(),
+                id: this.resolvedTimeline.getInstanceId(),
                 start: event.time,
                 end: null,
-                references: latestInstance.event.references,
+                references: event.references,
                 originalEnd: event.data.instance.originalEnd,
                 originalStart: event.data.instance.originalStart,
             };
-            activeInstanceId = latestInstance.id;
+            activeInstanceId = eventId;
         }
-    }
-    else if (allowMerge && !allowZeroGaps && lastInstance && lastInstance.end === event.time) {
-        // The previously running ended just now
-        // resume previous instance:
-        lastInstance.end = null;
-        lastInstance.references = joinReferences(lastInstance.references, event.references);
-        addCapsToResuming(lastInstance, event.data.instance.caps);
-    }
-    else if (!lastInstance || lastInstance.end !== null) {
-        // There is no previously running instance
-        // Start a new instance:
-        returnInstance = {
-            id: eventId,
-            start: event.time,
-            end: null,
-            references: event.references,
-            caps: event.data.instance.caps,
-            originalEnd: event.data.instance.originalEnd,
-            originalStart: event.data.instance.originalStart,
-        };
-        activeInstanceId = eventId;
-    }
-    else {
-        // There is already a running instance
-        lastInstance.references = joinReferences(lastInstance.references, event.references);
-        addCapsToResuming(lastInstance, event.data.instance.caps);
-    }
-    if (lastInstance && lastInstance.caps && !lastInstance.caps.length)
-        delete lastInstance.caps;
-    if (returnInstance &&
-        lastInstance &&
-        lastInstance.start === lastInstance.end &&
-        lastInstance.end === returnInstance.start) {
-        // replace the previous zero-length with this one instead
-        lastInstance.id = returnInstance.id;
-        lastInstance.start = returnInstance.start;
-        lastInstance.end = returnInstance.end;
-        lastInstance.references = returnInstance.references;
-        lastInstance.caps = returnInstance.caps;
-        lastInstance.originalStart = returnInstance.originalStart;
-        lastInstance.originalEnd = returnInstance.originalEnd;
-        returnInstance = null;
-    }
-    return {
-        activeInstanceId,
-        returnInstance,
-    };
-}
-function invertInstances(instances) {
-    if (instances.length) {
-        instances = cleanInstances(instances, true, true);
-        const invertedInstances = [];
-        if (instances[0].start !== 0) {
-            invertedInstances.push({
-                id: getId(),
-                isFirst: true,
-                start: 0,
-                end: null,
-                references: joinReferences(instances[0].references, instances[0].id),
-            });
-        }
-        for (let i = 0; i < instances.length; i++) {
-            const instance = instances[i];
-            const last = _.last(invertedInstances);
-            if (last) {
-                last.end = instance.start;
-            }
-            if (instance.end !== null) {
-                invertedInstances.push({
-                    id: getId(),
-                    start: instance.end,
+        else if (!allowMerge && !event.value && lastInstance && activeInstanceId === eventId) {
+            // The active instance stopped playing, but another is still playing
+            const latestInstance = (0, lib_1.reduceObj)(activeInstances, (memo, instanceEvent, id) => {
+                if (memo === null || memo.event.time < instanceEvent.time) {
+                    return {
+                        event: instanceEvent,
+                        id: id,
+                    };
+                }
+                return memo;
+            }, null);
+            if (latestInstance) {
+                // Restart that instance now:
+                lastInstance.end = event.time;
+                returnInstance = {
+                    id: (0, instance_1.isInstanceId)(eventId)
+                        ? `${eventId}_${this.resolvedTimeline.getInstanceId()}`
+                        : `@${eventId}_${this.resolvedTimeline.getInstanceId()}`,
+                    start: event.time,
                     end: null,
-                    references: joinReferences(instance.references, instance.id),
-                    caps: instance.caps,
-                });
+                    references: latestInstance.event.references,
+                    originalEnd: event.data.instance.originalEnd,
+                    originalStart: event.data.instance.originalStart,
+                };
+                activeInstanceId = latestInstance.id;
             }
         }
-        return invertedInstances;
-    }
-    else {
-        return [
-            {
-                id: getId(),
-                isFirst: true,
-                start: 0,
+        else if (allowMerge && !allowZeroGaps && lastInstance && lastInstance.end === event.time) {
+            // The previously running ended just now
+            // resume previous instance:
+            lastInstance.end = null;
+            lastInstance.references = (0, reference_1.joinReferences)(lastInstance.references, event.references);
+            (0, cap_1.addCapsToResuming)(lastInstance, event.data.instance.caps);
+        }
+        else if (!lastInstance || lastInstance.end !== null) {
+            // There is no previously running instance
+            // Start a new instance:
+            returnInstance = {
+                id: (0, instance_1.isInstanceId)(eventId) ? eventId : `@${eventId}`,
+                start: event.time,
                 end: null,
-                references: [],
-            },
-        ];
-    }
-}
-exports.invertInstances = invertInstances;
-/**
- * Perform an action on 2 arrays. Behaves somewhat like the ".*"-operator in Matlab
- * @param array0
- * @param array1
- * @param operate
- */
-function operateOnArrays(array0, array1, operate) {
-    if (array0 === null || array1 === null)
-        return null;
-    if (isReference(array0) && isReference(array1)) {
-        return operate(array0, array1);
-    }
-    const result = [];
-    const minLength = Math.min(_.isArray(array0) ? array0.length : Infinity, _.isArray(array1) ? array1.length : Infinity);
-    for (let i = 0; i < minLength; i++) {
-        const a = _.isArray(array0)
-            ? array0[i]
-            : { id: '', start: array0.value, end: array0.value, references: array0.references };
-        const b = _.isArray(array1)
-            ? array1[i]
-            : { id: '', start: array1.value, end: array1.value, references: array1.references };
-        const start = a.isFirst
-            ? { value: a.start, references: a.references }
-            : b.isFirst
-                ? { value: b.start, references: b.references }
-                : operate({ value: a.start, references: joinReferences(a.id, a.references) }, { value: b.start, references: joinReferences(b.id, b.references) });
-        const end = a.isFirst
-            ? a.end !== null
-                ? { value: a.end, references: a.references }
-                : null
-            : b.isFirst
-                ? b.end !== null
-                    ? { value: b.end, references: b.references }
-                    : null
-                : operate(a.end !== null ? { value: a.end, references: joinReferences(a.id, a.references) } : null, b.end !== null ? { value: b.end, references: joinReferences(b.id, b.references) } : null);
-        if (start !== null) {
-            result.push({
-                id: getId(),
-                start: start.value,
-                end: end === null ? null : end.value,
-                references: joinReferences(start.references, end !== null ? end.references : []),
-                caps: joinCaps(a.caps, b.caps),
-            });
-        }
-    }
-    return cleanInstances(result, false);
-}
-exports.operateOnArrays = operateOnArrays;
-function applyRepeatingInstances(instances, repeatTime0, options) {
-    if (repeatTime0 === null || !repeatTime0.value)
-        return instances;
-    const repeatTime = repeatTime0.value;
-    if (isReference(instances)) {
-        instances = [
-            {
-                id: '',
-                start: instances.value,
-                end: null,
-                references: instances.references,
-            },
-        ];
-    }
-    const repeatedInstances = [];
-    for (let i = 0; i < instances.length; i++) {
-        const instance = instances[i];
-        let startTime = Math.max(options.time - ((options.time - instance.start) % repeatTime), instance.start);
-        let endTime = instance.end === null ? null : instance.end + (startTime - instance.start);
-        const cap = (instance.caps ? _.find(instance.caps, (cap) => instance.references.indexOf(cap.id) !== -1) : null) || null;
-        const limit = options.limitCount || 2;
-        for (let i = 0; i < limit; i++) {
-            if (options.limitTime && startTime >= options.limitTime)
-                break;
-            const cappedStartTime = cap ? Math.max(cap.start, startTime) : startTime;
-            const cappedEndTime = cap && cap.end !== null && endTime !== null ? Math.min(cap.end, endTime) : endTime;
-            if ((cappedEndTime !== null && cappedEndTime !== void 0 ? cappedEndTime : Infinity) > cappedStartTime) {
-                repeatedInstances.push({
-                    id: getId(),
-                    start: cappedStartTime,
-                    end: cappedEndTime,
-                    references: joinReferences(instance.id, instance.references, repeatTime0.references),
-                });
-            }
-            startTime += repeatTime;
-            if (endTime !== null)
-                endTime += repeatTime;
-        }
-    }
-    return cleanInstances(repeatedInstances, false);
-}
-exports.applyRepeatingInstances = applyRepeatingInstances;
-/**
- * Cap instances so that they are within their parentInstances
- * @param instances
- * @param parentInstances
- */
-function capInstances(instances, parentInstances) {
-    var _a, _b, _c, _d, _e, _f;
-    if (isReference(parentInstances) || parentInstances === null)
-        return instances;
-    let returnInstances = [];
-    for (let i = 0; i < instances.length; i++) {
-        const instanceOrg = instances[i];
-        const addedInstanceTimes = new Set();
-        for (let j = 0; j < parentInstances.length; j++) {
-            const parent = parentInstances[j];
-            // First, check if the instance crosses the parent at all:
-            if (instanceOrg.start <= ((_a = parent.end) !== null && _a !== void 0 ? _a : Infinity) && ((_b = instanceOrg.end) !== null && _b !== void 0 ? _b : Infinity) >= parent.start) {
-                const instance = _.clone(instanceOrg);
-                // Cap start
-                if (instance.start < parent.start) {
-                    setInstanceStartTime(instance, parent.start);
-                }
-                // Cap end
-                if (((_c = instance.end) !== null && _c !== void 0 ? _c : Infinity) > ((_d = parent.end) !== null && _d !== void 0 ? _d : Infinity)) {
-                    setInstanceEndTime(instance, parent.end);
-                }
-                if (instance.start >= parent.start && ((_e = instance.end) !== null && _e !== void 0 ? _e : Infinity) <= ((_f = parent.end) !== null && _f !== void 0 ? _f : Infinity)) {
-                    // The instance is within the parent
-                    if (instance.start === instance.end && addedInstanceTimes.has(instance.start)) {
-                        // Don't add zero-length instances if there are already is instances covering that time
-                    }
-                    else {
-                        instance.references = joinReferences(instance.references, parent.references);
-                        returnInstances.push(instance);
-                        addedInstanceTimes.add(instance.start);
-                        if (instance.end)
-                            addedInstanceTimes.add(instance.end);
-                    }
-                }
-            }
-        }
-    }
-    returnInstances.sort((a, b) => a.start - b.start);
-    // Ensure unique ids:
-    const ids = {};
-    for (let i = 0; i < returnInstances.length; i++) {
-        const instance = returnInstances[i];
-        // tslint:disable-next-line
-        if (ids[instance.id] !== undefined) {
-            instance.id = instance.id + ++ids[instance.id];
+                references: event.references,
+                caps: event.data.instance.caps,
+                originalEnd: event.data.instance.originalEnd,
+                originalStart: event.data.instance.originalStart,
+            };
+            activeInstanceId = eventId;
         }
         else {
-            ids[instance.id] = 0;
+            // There is already a running instance
+            lastInstance.references = (0, reference_1.joinReferences)(lastInstance.references, event.references);
+            (0, cap_1.addCapsToResuming)(lastInstance, event.data.instance.caps);
         }
+        if (lastInstance?.caps && !lastInstance.caps.length)
+            delete lastInstance.caps;
+        if (returnInstance &&
+            lastInstance &&
+            lastInstance.start === lastInstance.end &&
+            lastInstance.end === returnInstance.start) {
+            // replace the previous zero-length with this one instead
+            lastInstance.id = returnInstance.id;
+            lastInstance.start = returnInstance.start;
+            lastInstance.end = returnInstance.end;
+            lastInstance.references = returnInstance.references;
+            lastInstance.caps = returnInstance.caps;
+            lastInstance.originalStart = returnInstance.originalStart;
+            lastInstance.originalEnd = returnInstance.originalEnd;
+            returnInstance = null;
+        }
+        return {
+            activeInstanceId,
+            returnInstance,
+        };
     }
-    // Clean up the instances, to remove duplicates
-    returnInstances = cleanInstances(returnInstances, true, true);
-    return returnInstances;
-}
-exports.capInstances = capInstances;
-function isReference(ref0) {
-    const ref = ref0;
-    return (typeof ref === 'object' &&
-        !_.isArray(ref) &&
-        ref.value !== undefined &&
-        _.isArray(ref.references) &&
-        ref !== null);
-}
-exports.isReference = isReference;
-function joinReferences(...references) {
-    const refMap = {};
-    const refs = [];
-    for (let i = 0; i < references.length; i++) {
-        const reference = references[i];
-        if (reference) {
-            if (typeof reference === 'string') {
-                if (!refMap[reference])
-                    refs.push(reference);
-                refMap[reference] = true;
+    /**
+     * Clean up instances, join overlapping etc..
+     * @param instances
+     */
+    cleanInstances(instances, allowMerge, allowZeroGaps = false) {
+        // First, optimize for certain common situations:
+        if (instances.length === 0)
+            return [];
+        if (instances.length === 1)
+            return instances;
+        const events = [];
+        for (const instance of instances) {
+            events.push({
+                time: instance.start,
+                value: true,
+                data: { instance: instance },
+                references: instance.references,
+            });
+            if (instance.end !== null) {
+                events.push({
+                    time: instance.end,
+                    value: false,
+                    data: { instance: instance },
+                    references: instance.references,
+                });
             }
-            else {
-                for (let j = 0; j < reference.length; j++) {
-                    const ref = reference[j];
-                    if (ref) {
-                        if (!refMap[ref])
-                            refs.push(ref);
-                        refMap[ref] = true;
+        }
+        return this.convertEventsToInstances(events, allowMerge, allowZeroGaps);
+    }
+    /**
+     * Cap instances so that they are within their parentInstances
+     * @param instances
+     * @param cappingInstances
+     */
+    capInstances(instances, cappingInstances, allowZeroGaps = true) {
+        if ((0, reference_1.isReference)(cappingInstances) || cappingInstances === null)
+            return instances;
+        let returnInstances = [];
+        for (let i = 0; i < instances.length; i++) {
+            const instanceOrg = instances[i];
+            const addedInstanceTimes = new Set();
+            for (let j = 0; j < cappingInstances.length; j++) {
+                const capInstance = cappingInstances[j];
+                // First, check if the instance crosses the parent at all:
+                if (instanceOrg.start <= (capInstance.end ?? Infinity) &&
+                    (instanceOrg.end ?? Infinity) >= capInstance.start) {
+                    const instance = this.capInstance(instanceOrg, capInstance);
+                    if (instance.start >= capInstance.start &&
+                        (instance.end ?? Infinity) <= (capInstance.end ?? Infinity)) {
+                        // The instance is within the parent
+                        if (instance.start === instance.end && addedInstanceTimes.has(instance.start)) {
+                            // Don't add zero-length instances if there are already is instances covering that time
+                        }
+                        else {
+                            instance.references = (0, reference_1.joinReferences)(instance.references, capInstance.references);
+                            returnInstances.push(instance);
+                            addedInstanceTimes.add(instance.start);
+                            if (instance.end)
+                                addedInstanceTimes.add(instance.end);
+                        }
                     }
                 }
             }
         }
+        returnInstances.sort((a, b) => a.start - b.start);
+        // Ensure unique ids:
+        const ids = {};
+        for (const instance of returnInstances) {
+            // tslint:disable-next-line
+            if (ids[instance.id] !== undefined) {
+                instance.id = `${instance.id}${++ids[instance.id]}`;
+            }
+            else {
+                ids[instance.id] = 0;
+            }
+        }
+        // Clean up the instances, to remove duplicates
+        returnInstances = this.cleanInstances(returnInstances, true, allowZeroGaps);
+        return returnInstances;
     }
-    return refs.sort((a, b) => {
-        if (a > b)
-            return 1;
-        if (a < b)
-            return -1;
-        return 0;
-    });
+    capInstance(instanceOrg, capInstance) {
+        const instance = { ...instanceOrg };
+        // Cap start
+        if (instance.start < capInstance.start) {
+            this.setInstanceStartTime(instance, capInstance.start);
+        }
+        // Cap end
+        if ((instance.end ?? Infinity) > (capInstance.end ?? Infinity)) {
+            this.setInstanceEndTime(instance, capInstance.end);
+        }
+        return instance;
+    }
+    setInstanceEndTime(instance, endTime) {
+        instance.originalEnd = instance.originalEnd ?? instance.end;
+        instance.end = endTime;
+    }
+    setInstanceStartTime(instance, startTime) {
+        instance.originalStart = instance.originalStart ?? instance.start;
+        instance.start = startTime;
+    }
+    applyRepeatingInstances(instances, repeatTime0) {
+        if (repeatTime0 === null || !repeatTime0.value)
+            return instances;
+        const options = this.resolvedTimeline.options;
+        const repeatTime = repeatTime0.value;
+        const repeatedInstances = [];
+        for (const instance of instances) {
+            let startTime = Math.max(options.time - ((options.time - instance.start) % repeatTime), instance.start);
+            let endTime = instance.end === null ? null : instance.end + (startTime - instance.start);
+            const cap = (instance.caps
+                ? instance.caps.find((cap) => instance.references.indexOf(`@${cap.id}`) !== -1)
+                : null) ?? null;
+            const limit = options.limitCount ?? 2;
+            for (let i = 0; i < limit; i++) {
+                if (options.limitTime && startTime >= options.limitTime)
+                    break;
+                const cappedStartTime = cap ? Math.max(cap.start, startTime) : startTime;
+                const cappedEndTime = cap && cap.end !== null && endTime !== null ? Math.min(cap.end, endTime) : endTime;
+                if ((cappedEndTime ?? Infinity) > cappedStartTime) {
+                    repeatedInstances.push({
+                        id: this.resolvedTimeline.getInstanceId(),
+                        start: cappedStartTime,
+                        end: cappedEndTime,
+                        references: (0, reference_1.joinReferences)(instance.references, repeatTime0.references, `@${instance.id}`),
+                    });
+                }
+                startTime += repeatTime;
+                if (endTime !== null)
+                    endTime += repeatTime;
+            }
+        }
+        return this.cleanInstances(repeatedInstances, false);
+    }
 }
-exports.joinReferences = joinReferences;
+exports.InstanceHandler = InstanceHandler;
+
+},{"./lib/cap":24,"./lib/event":25,"./lib/instance":27,"./lib/lib":28,"./lib/reference":30}],17:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.LayerStateHandler = void 0;
+const lib_1 = require("./lib/lib");
+const performance_1 = require("./lib/performance");
+/**
+ * LayerStateHandler instances are short-lived.
+ * They are initialized, .resolveConflicts() is called and then discarded
+ */
+class LayerStateHandler {
+    constructor(resolvedTimeline, instance, layer) {
+        this.resolvedTimeline = resolvedTimeline;
+        this.instance = instance;
+        this.layer = layer;
+        this.pointsInTime = {};
+        this.objectsOnLayer = [];
+        this.objectIdsOnLayer = this.resolvedTimeline.getLayerObjects(layer);
+    }
+    debug(...args) {
+        if (this.resolvedTimeline.options.debug)
+            console.log(...args);
+    }
+    /** Resolve conflicts between objects on the layer. */
+    resolveConflicts() {
+        const toc = (0, performance_1.tic)('       resolveConflicts');
+        /*
+            This algoritm basically works like this:
+
+            1. Collect all instances start- and end-times as points-of-interest
+            2. Sweep through the points-of-interest and determine which instance is the "winning one" at every point in time
+        */
+        // Populate this.objectsOnLayer:
+        for (const objId of this.objectIdsOnLayer) {
+            this.objectsOnLayer.push(this.resolvedTimeline.getObject(objId));
+        }
+        // Fast-path: if there's only one object on the layer, it can't conflict with anything
+        if (this.objectsOnLayer.length === 1) {
+            for (const obj of this.objectsOnLayer) {
+                obj.resolved.resolvedConflicts = true;
+                for (const instance of obj.resolved.instances) {
+                    instance.originalStart = instance.originalStart ?? instance.start;
+                    instance.originalEnd = instance.originalEnd ?? instance.end;
+                }
+            }
+            return;
+        }
+        this.debug(`======= resolveConflicts "${this.layer}" (${this.objectsOnLayer.length} objects)`);
+        // Sort to make sure parent groups are evaluated before their children:
+        this.objectsOnLayer.sort(compareObjectsOnLayer);
+        // Step 1: Collect all points-of-interest (which points in time we want to evaluate)
+        // and which instances that are interesting
+        for (const obj of this.objectsOnLayer) {
+            // Notes:
+            // Since keyframes can't be placed on a layer, we assume that the object is not a keyframe
+            // We also assume that the object has a layer
+            for (const instance of obj.resolved.instances) {
+                const timeEvents = [];
+                timeEvents.push({ time: instance.start, enable: true });
+                if (instance.end)
+                    timeEvents.push({ time: instance.end, enable: false });
+                // Save a reference to this instance on all points in time that could affect it:
+                for (const timeEvent of timeEvents) {
+                    if (timeEvent.enable) {
+                        this.addPointInTime(timeEvent.time, 'start', obj, instance);
+                    }
+                    else {
+                        this.addPointInTime(timeEvent.time, 'end', obj, instance);
+                    }
+                }
+            }
+            obj.resolved.resolvedConflicts = true;
+            obj.resolved.instances.splice(0); // clear the instances, so new instances can be re-added later
+        }
+        // Step 2: Resolve the state for the points-of-interest
+        // This is done by sweeping the points-of-interest chronologically,
+        // determining the state for every point in time by adding & removing objects from aspiringInstances
+        // Then sorting it to determine who takes precedence
+        let currentState = undefined;
+        const activeObjIds = {};
+        /** The objects in aspiringInstances  */
+        let aspiringInstances = [];
+        const times = Object.keys(this.pointsInTime)
+            .map((time) => parseFloat(time))
+            // Sort chronologically:
+            .sort((a, b) => a - b);
+        // Iterate through all points-of-interest times:
+        for (const time of times) {
+            this.debug(`-------------- time: ${time}`);
+            /** A set of identifiers for which instance-events have been check at this point in time. Used to avoid looking at the same object twice. */
+            const checkedThisTime = new Set();
+            /** List of the instances to check at this point in time. */
+            const instancesToCheck = this.pointsInTime[time];
+            instancesToCheck.sort(compareInstancesToCheck);
+            for (let j = 0; j < instancesToCheck.length; j++) {
+                const o = instancesToCheck[j];
+                const obj = o.obj;
+                const instance = o.instance;
+                let toBeEnabled;
+                if (instance.start === time && instance.end === time) {
+                    // Handle zero-length instances:
+                    if (o.instanceEvent === 'start')
+                        toBeEnabled = true; // Start a zero-length instance
+                    else
+                        toBeEnabled = false; // End a zero-length instance
+                }
+                else {
+                    toBeEnabled = (instance.start || 0) <= time && (instance.end ?? Infinity) > time;
+                }
+                const identifier = `${obj.id}_${instance.id}_${o.instanceEvent}`;
+                if (!checkedThisTime.has(identifier)) {
+                    // Only check each object and event-type once for every point in time
+                    checkedThisTime.add(identifier);
+                    if (toBeEnabled) {
+                        // The instance wants to be enabled (is starting)
+                        // Add to aspiringInstances:
+                        aspiringInstances.push({ obj, instance });
+                    }
+                    else {
+                        // The instance doesn't want to be enabled (is ending)
+                        // Remove from aspiringInstances:
+                        aspiringInstances = removeFromAspiringInstances(aspiringInstances, obj.id);
+                    }
+                    // Sort the instances on layer to determine who is the active one:
+                    aspiringInstances.sort(compareAspiringInstances);
+                    // At this point, the first instance in aspiringInstances is the active one.
+                    const instanceOnTopOfLayer = aspiringInstances[0];
+                    // Update current state:
+                    const prevObjInstance = currentState;
+                    const replaceOld = instanceOnTopOfLayer &&
+                        (!prevObjInstance ||
+                            prevObjInstance.id !== instanceOnTopOfLayer.obj.id ||
+                            !prevObjInstance.instance.id.startsWith(`${instanceOnTopOfLayer.instance.id}`));
+                    const removeOld = !instanceOnTopOfLayer && prevObjInstance;
+                    if (replaceOld || removeOld) {
+                        if (prevObjInstance) {
+                            // Cap the old instance, so it'll end at this point in time:
+                            this.instance.setInstanceEndTime(prevObjInstance.instance, time);
+                            this.debug(`${prevObjInstance.id} stop`);
+                            // Update activeObjIds:
+                            delete activeObjIds[prevObjInstance.id];
+                        }
+                    }
+                    if (replaceOld) {
+                        // Set the new objectInstance to be the current one:
+                        const currentObj = instanceOnTopOfLayer.obj;
+                        this.debug(`${currentObj.id} play`);
+                        const newInstance = {
+                            ...instanceOnTopOfLayer.instance,
+                            // We're setting new start & end times so they match up with the state:
+                            start: time,
+                            end: null,
+                            fromInstanceId: instanceOnTopOfLayer.instance.id,
+                            originalEnd: instanceOnTopOfLayer.instance.originalEnd ?? instanceOnTopOfLayer.instance.end,
+                            originalStart: instanceOnTopOfLayer.instance.originalStart ?? instanceOnTopOfLayer.instance.start,
+                        };
+                        // Make the instance id unique:
+                        for (let i = 0; i < currentObj.resolved.instances.length; i++) {
+                            if (currentObj.resolved.instances[i].id === newInstance.id) {
+                                newInstance.id = `${newInstance.id}_$${currentObj.resolved.instances.length}`;
+                            }
+                        }
+                        currentObj.resolved.instances.push(newInstance);
+                        const newObjInstance = {
+                            ...currentObj,
+                            instance: newInstance,
+                        };
+                        // Save to current state:
+                        currentState = newObjInstance;
+                        // Update activeObjIds:
+                        activeObjIds[newObjInstance.id] = newObjInstance;
+                    }
+                    else if (removeOld) {
+                        // Remove from current state:
+                        currentState = undefined;
+                    }
+                }
+            }
+        }
+        // At this point, the instances of all objects are calculated,
+        // taking into account priorities, clashes etc.
+        // Cap children inside their parents:
+        // Functionally, this isn't needed since this is done in ResolvedTimelineHandler.resolveTimelineObj() anyway.
+        // However by capping children here some re-evaluating iterations can be avoided, so this increases performance.
+        {
+            const allChildren = this.objectsOnLayer
+                .filter((obj) => !!obj.resolved.parentId)
+                // Sort, so that the outermost are handled first:
+                .sort((a, b) => {
+                return a.resolved.levelDeep - b.resolved.levelDeep;
+            });
+            for (const obj of allChildren) {
+                if (obj.resolved.parentId) {
+                    const parent = this.resolvedTimeline.getObject(obj.resolved.parentId);
+                    if (parent) {
+                        obj.resolved.instances = this.instance.cleanInstances(this.instance.capInstances(obj.resolved.instances, parent.resolved.instances), false, false);
+                    }
+                }
+            }
+        }
+        this.debug('==== resolveConflicts done');
+        toc();
+    }
+    /** Add an instance and event to a certain point-in-time */
+    addPointInTime(time, instanceEvent, obj, instance) {
+        // Note on order: Ending events come before starting events
+        this.debug('addPointInTime', time, instanceEvent, instance);
+        if (!this.pointsInTime[time + ''])
+            this.pointsInTime[time + ''] = [];
+        this.pointsInTime[time + ''].push({ obj, instance, instanceEvent });
+    }
+}
+exports.LayerStateHandler = LayerStateHandler;
+function compareObjectsOnLayer(a, b) {
+    // Sort to make sure parent groups are evaluated before their children:
+    return a.resolved.levelDeep - b.resolved.levelDeep || (0, lib_1.compareStrings)(a.id, b.id);
+}
+function compareInstancesToCheck(a, b) {
+    // Note: we assume that there are no keyframes here. (if there where, they would be sorted first)
+    if (a.instance.id === b.instance.id && a.instance.start === b.instance.start && a.instance.end === b.instance.end) {
+        // A & B are the same instance, it is a zero-length instance!
+        // In this case, put the start before the end:
+        if (a.instanceEvent === 'start' && b.instanceEvent === 'end')
+            return -1;
+        if (a.instanceEvent === 'end' && b.instanceEvent === 'start')
+            return 1;
+    }
+    // Handle ending instances first:
+    if (a.instanceEvent === 'start' && b.instanceEvent === 'end')
+        return 1;
+    if (a.instanceEvent === 'end' && b.instanceEvent === 'start')
+        return -1;
+    if (a.instance.start === a.instance.end || b.instance.start === b.instance.end) {
+        // Put later-ending instances last (in the case of zero-length vs non-zero-length instance):
+        const difference = (a.instance.end ?? Infinity) - (b.instance.end ?? Infinity);
+        if (difference)
+            return difference;
+    }
+    if (a.obj.resolved && b.obj.resolved) {
+        // Deeper objects (children in groups) comes later, we want to check the parent groups first:
+        const difference = a.obj.resolved.levelDeep - b.obj.resolved.levelDeep;
+        if (difference)
+            return difference;
+    }
+    // Last resort, sort by id to make it deterministic:
+    return (0, lib_1.compareStrings)(a.obj.id, b.obj.id) || (0, lib_1.compareStrings)(a.instance.id, b.instance.id);
+}
+const removeFromAspiringInstances = (aspiringInstances, objId) => {
+    const returnInstances = [];
+    for (let i = 0; i < aspiringInstances.length; i++) {
+        if (aspiringInstances[i].obj.id !== objId)
+            returnInstances.push(aspiringInstances[i]);
+    }
+    return returnInstances;
+};
+function compareAspiringInstances(a, b) {
+    // Determine who takes precedence:
+    return ((b.obj.priority || 0) - (a.obj.priority || 0) || // First, sort using priority
+        b.instance.start - a.instance.start || // Then, sort using the start time
+        (0, lib_1.compareStrings)(a.obj.id, b.obj.id) || // Last resort, sort by id to make it deterministic
+        (0, lib_1.compareStrings)(a.instance.id, b.instance.id));
+}
+
+},{"./lib/lib":28,"./lib/performance":29}],18:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ReferenceHandler = void 0;
+const lib_1 = require("./lib/lib");
+const cap_1 = require("./lib/cap");
+const event_1 = require("./lib/event");
+const reference_1 = require("./lib/reference");
+const expression_1 = require("./lib/expression");
+class ReferenceHandler {
+    constructor(resolvedTimeline, instance) {
+        this.resolvedTimeline = resolvedTimeline;
+        this.instance = instance;
+        this.operateApplyParentInstance = (a, b) => {
+            if (a === null || b === null)
+                return null;
+            return {
+                value: a.value + b.value,
+                references: (0, reference_1.joinReferences)(a.references, b.references),
+            };
+        };
+    }
+    /**
+     * Look up a reference on the timeline
+     * Return values:
+     * TimelineObjectInstance[]: Instances on the timeline where the reference expression is true
+     * ValueWithReference: A singular value which can be combined arithmetically with Instances
+     * null: Means "something is invalid", an null-value will always return null when combined with other values
+     *
+     * @param obj
+     * @param expr
+     * @param context
+     */
+    lookupExpression(obj, expr, context) {
+        if (expr === null)
+            return { result: null, allReferences: [] };
+        if (typeof expr === 'string' && (0, expression_1.isNumericExpr)(expr)) {
+            return {
+                result: {
+                    value: parseFloat(expr),
+                    references: [],
+                },
+                allReferences: [],
+            };
+        }
+        else if (typeof expr === 'number') {
+            return {
+                result: {
+                    value: expr,
+                    references: [],
+                },
+                allReferences: [],
+            };
+        }
+        else if (typeof expr === 'string') {
+            expr = expr.trim();
+            const exprLower = expr.toLowerCase();
+            if (exprLower === 'true') {
+                return {
+                    result: {
+                        value: 0,
+                        references: [],
+                    },
+                    allReferences: [],
+                };
+            }
+            else if (exprLower === 'false') {
+                return {
+                    result: null,
+                    allReferences: [],
+                };
+            }
+            // Look up string
+            let referencedObjs = [];
+            let ref = context;
+            let rest = '';
+            let objIdsToReference = [];
+            const allReferences = [];
+            let referenceIsOk = false;
+            // Match id, example: "#objectId.start"
+            const m = /^\W*#([^.]+)(.*)/.exec(expr);
+            if (m) {
+                const id = m[1];
+                rest = m[2];
+                referenceIsOk = true;
+                objIdsToReference = [id];
+                allReferences.push(`#${id}`);
+            }
+            else {
+                // Match class, example: ".className.start"
+                const m = /^\W*\.([^.]+)(.*)/.exec(expr);
+                if (m) {
+                    const className = m[1];
+                    rest = m[2];
+                    referenceIsOk = true;
+                    objIdsToReference = this.resolvedTimeline.getClassObjects(className) ?? [];
+                    allReferences.push(`.${className}`);
+                }
+                else {
+                    // Match layer, example: "$layer"
+                    const m = /^\W*\$([^.]+)(.*)/.exec(expr);
+                    if (m) {
+                        const layer = m[1];
+                        rest = m[2];
+                        referenceIsOk = true;
+                        objIdsToReference = this.resolvedTimeline.getLayerObjects(layer) ?? [];
+                        allReferences.push(`$${layer}`);
+                    }
+                }
+            }
+            for (let i = 0; i < objIdsToReference.length; i++) {
+                const refObjId = objIdsToReference[i];
+                if (refObjId === obj.id) {
+                    // Looks like the object is referencing itself!
+                    if (obj.resolved.resolving) {
+                        obj.resolved.isSelfReferencing = true;
+                    }
+                }
+                else {
+                    const refObj = this.resolvedTimeline.getObject(refObjId);
+                    if (refObj)
+                        referencedObjs.push(refObj);
+                }
+            }
+            if (!referenceIsOk) {
+                return { result: null, allReferences: [] };
+            }
+            if (obj.resolved.isSelfReferencing) {
+                // Exclude any self-referencing objects:
+                referencedObjs = referencedObjs.filter((refObj) => {
+                    return !refObj.resolved.isSelfReferencing;
+                });
+            }
+            if (referencedObjs.length) {
+                if (/start/.exec(rest))
+                    ref = 'start';
+                else if (/end/.exec(rest))
+                    ref = 'end';
+                else if (/duration/.exec(rest))
+                    ref = 'duration';
+                if (ref === 'duration') {
+                    // Duration refers to the first object on the resolved timeline
+                    return this.lookupReferencedObjsDuration(obj, referencedObjs, allReferences);
+                }
+                else if (ref === 'start') {
+                    return this.lookupReferencedObjs(obj, referencedObjs, allReferences, false, false);
+                }
+                else if (ref === 'end') {
+                    return this.lookupReferencedObjs(obj, referencedObjs, allReferences, true, true);
+                }
+                else {
+                    /* istanbul ignore next */
+                    (0, lib_1.assertNever)(ref);
+                }
+            }
+            return { result: [], allReferences: allReferences };
+        }
+        else if (!expr) {
+            return { result: null, allReferences: [] };
+        }
+        else {
+            // expr is an expressionObj
+            return this.lookupExpressionObj(obj, context, expr);
+        }
+    }
+    applyParentInstances(parentInstances, value) {
+        return this.operateOnArrays(parentInstances, value, this.operateApplyParentInstance);
+    }
+    /**
+     * Perform an action on 2 arrays. Behaves somewhat like the ".*"-operator in Matlab
+     * @param array0
+     * @param array1
+     * @param operate
+     */
+    operateOnArrays(array0, array1, operate) {
+        if (array0 === null || array1 === null)
+            return null;
+        if ((0, reference_1.isReference)(array0) && (0, reference_1.isReference)(array1)) {
+            return operate(array0, array1);
+        }
+        const result = [];
+        const minLength = Math.min((0, lib_1.isArray)(array0) ? array0.length : Infinity, (0, lib_1.isArray)(array1) ? array1.length : Infinity);
+        for (let i = 0; i < minLength; i++) {
+            const a = (0, lib_1.isArray)(array0)
+                ? array0[i]
+                : { id: '@', start: array0.value, end: array0.value, references: array0.references };
+            const b = (0, lib_1.isArray)(array1)
+                ? array1[i]
+                : { id: '@', start: array1.value, end: array1.value, references: array1.references };
+            const start = a.isFirst
+                ? { value: a.start, references: a.references }
+                : b.isFirst
+                    ? { value: b.start, references: b.references }
+                    : operate({ value: a.start, references: (0, reference_1.joinReferences)(a.references, a.id === '@' ? [] : `@${a.id}`) }, { value: b.start, references: (0, reference_1.joinReferences)(b.references, b.id === '@' ? [] : `@${b.id}`) });
+            const end = a.isFirst
+                ? a.end !== null
+                    ? { value: a.end, references: a.references }
+                    : null
+                : b.isFirst
+                    ? b.end !== null
+                        ? { value: b.end, references: b.references }
+                        : null
+                    : operate(a.end !== null
+                        ? {
+                            value: a.end,
+                            references: (0, reference_1.joinReferences)(a.references, a.id === '@' ? [] : `@${a.id}`),
+                        }
+                        : null, b.end !== null
+                        ? {
+                            value: b.end,
+                            references: (0, reference_1.joinReferences)(b.references, b.id === '@' ? [] : `@${b.id}`),
+                        }
+                        : null);
+            if (start !== null) {
+                result.push({
+                    id: this.resolvedTimeline.getInstanceId(),
+                    start: start.value,
+                    end: end === null ? null : end.value,
+                    references: (0, reference_1.joinReferences)(start.references, end !== null ? end.references : []),
+                    caps: (0, cap_1.joinCaps)(a.caps, b.caps),
+                });
+            }
+        }
+        return this.instance.cleanInstances(result, false);
+    }
+    /**
+     * Look up the referenced objects (in the context of a duration-reference)
+     */
+    lookupReferencedObjsDuration(obj, referencedObjs, allReferences) {
+        const instanceDurations = [];
+        for (let i = 0; i < referencedObjs.length; i++) {
+            const referencedObj = referencedObjs[i];
+            // Ensure that the referenced object is resolved.
+            // Note: This is where referenced object(s) are recursively resolved
+            this.resolvedTimeline.resolveTimelineObj(referencedObj);
+            if (referencedObj.resolved.resolvedReferences) {
+                if (obj.resolved.isSelfReferencing && referencedObj.resolved.isSelfReferencing) {
+                    // If the querying object is self-referencing, exclude any other self-referencing objects,
+                    // ignore the object
+                }
+                else {
+                    const firstInstance = referencedObj.resolved.instances[0];
+                    if (firstInstance) {
+                        const duration = firstInstance.end !== null ? firstInstance.end - firstInstance.start : null;
+                        if (duration !== null) {
+                            instanceDurations.push({
+                                value: duration,
+                                references: (0, reference_1.joinReferences)([`#${referencedObj.id}`], firstInstance.references),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        let firstDuration = null;
+        for (let i = 0; i < instanceDurations.length; i++) {
+            const d = instanceDurations[i];
+            if (firstDuration === null || d.value < firstDuration.value)
+                firstDuration = d;
+        }
+        return { result: firstDuration, allReferences: allReferences };
+    }
+    /**
+     * Look up the referenced objects
+     */
+    lookupReferencedObjs(obj, referencedObjs, allReferences, invert, ignoreFirstIfZero) {
+        let referencedInstances = [];
+        for (let i = 0; i < referencedObjs.length; i++) {
+            const referencedObj = referencedObjs[i];
+            // Ensure that the referenced object is resolved.
+            // Note: This is where referenced object(s) are recursively resolved
+            this.resolvedTimeline.resolveTimelineObj(referencedObj);
+            if (referencedObj.resolved.resolvedReferences) {
+                if (obj.resolved.isSelfReferencing && referencedObj.resolved.isSelfReferencing) {
+                    // If the querying object is self-referencing, exclude any other self-referencing objects,
+                    // ignore the object
+                }
+                else {
+                    referencedInstances = referencedInstances.concat(referencedObj.resolved.instances);
+                }
+            }
+        }
+        if (referencedInstances.length) {
+            if (invert) {
+                referencedInstances = this.instance.invertInstances(referencedInstances);
+            }
+            else {
+                referencedInstances = this.instance.cleanInstances(referencedInstances, true, true);
+            }
+            if (ignoreFirstIfZero) {
+                const first = referencedInstances[0];
+                if (first && first.start === 0) {
+                    referencedInstances.splice(0, 1);
+                }
+            }
+            return { result: referencedInstances, allReferences: allReferences };
+        }
+        else {
+            return { result: [], allReferences: allReferences };
+        }
+    }
+    /**
+     * Look up an ExpressionObj
+     */
+    lookupExpressionObj(obj, context, expr) {
+        const l = this.lookupExpression(obj, expr.l, context);
+        const r = this.lookupExpression(obj, expr.r, context);
+        const lookupExpr = {
+            l: l.result,
+            o: expr.o,
+            r: r.result,
+        };
+        const allReferences = l.allReferences.concat(r.allReferences);
+        if (lookupExpr.o === '!') {
+            // Invert, ie discard l, invert and return r:
+            if (lookupExpr.r && (0, lib_1.isArray)(lookupExpr.r)) {
+                return {
+                    result: this.instance.invertInstances(lookupExpr.r),
+                    allReferences: allReferences,
+                };
+            }
+            else {
+                // We can't invert a value
+                return {
+                    result: lookupExpr.r,
+                    allReferences: allReferences,
+                };
+            }
+        }
+        else if (lookupExpr.l === null || lookupExpr.r === null) {
+            return { result: null, allReferences: allReferences };
+        }
+        else if (lookupExpr.o === '&' || lookupExpr.o === '|') {
+            const combiner = new ReferenceAndOrCombiner(this.resolvedTimeline, lookupExpr.l, lookupExpr.r, lookupExpr.o);
+            const instances = combiner.calculateResult();
+            return { result: instances, allReferences: allReferences };
+        }
+        else {
+            const operate = Operators.get(lookupExpr.o);
+            const result = this.operateOnArrays(lookupExpr.l, lookupExpr.r, operate);
+            return { result: result, allReferences: allReferences };
+        }
+    }
+}
+exports.ReferenceHandler = ReferenceHandler;
+/** Helper class that deals with an And ('&') or an Or ('|') expression */
+class ReferenceAndOrCombiner {
+    constructor(resolvedTimeline, leftOperand, rightOperand, operator) {
+        this.resolvedTimeline = resolvedTimeline;
+        this.leftOperand = leftOperand;
+        this.rightOperand = rightOperand;
+        this.events = [];
+        this.instances = [];
+        if (operator === '&') {
+            this.calcResult = (left, right) => !!(left && right);
+        }
+        else if (operator === '|') {
+            this.calcResult = (left, right) => !!(left || right);
+        }
+        else {
+            /* istanbul ignore next */
+            (0, lib_1.assertNever)(operator);
+            /* istanbul ignore next */
+            this.calcResult = () => false;
+        }
+        if ((0, lib_1.isArray)(leftOperand))
+            this._addInstanceEvents(leftOperand, true);
+        if ((0, lib_1.isArray)(rightOperand))
+            this._addInstanceEvents(rightOperand, false);
+        this.events = (0, event_1.sortEvents)(this.events);
+    }
+    _addInstanceEvents(instances, left) {
+        for (let i = 0; i < instances.length; i++) {
+            const instance = instances[i];
+            if (instance.start !== instance.end) {
+                // event doesn't actually exist...
+                this.events.push({
+                    left: left,
+                    time: instance.start,
+                    value: true,
+                    references: [],
+                    data: true,
+                    instance: instance,
+                });
+                if (instance.end !== null) {
+                    this.events.push({
+                        left: left,
+                        time: instance.end,
+                        value: false,
+                        references: [],
+                        data: false,
+                        instance: instance,
+                    });
+                }
+            }
+        }
+    }
+    calculateResult() {
+        let leftValue = (0, reference_1.isReference)(this.leftOperand) ? !!this.leftOperand.value : false;
+        let rightValue = (0, reference_1.isReference)(this.rightOperand) ? !!this.rightOperand.value : false;
+        let leftInstance = null;
+        let rightInstance = null;
+        let resultValue = this.calcResult(leftValue, rightValue);
+        this.updateInstance(0, resultValue, (0, reference_1.joinReferences)((0, reference_1.isReference)(this.leftOperand) ? this.leftOperand.references : [], (0, reference_1.isReference)(this.rightOperand) ? this.rightOperand.references : []), []);
+        for (let i = 0; i < this.events.length; i++) {
+            const e = this.events[i];
+            const next = this.events[i + 1];
+            if (e.left) {
+                leftValue = e.value;
+                leftInstance = e.instance;
+            }
+            else {
+                rightValue = e.value;
+                rightInstance = e.instance;
+            }
+            if (!next || next.time !== e.time) {
+                const newResultValue = this.calcResult(leftValue, rightValue);
+                const resultCaps = (leftInstance ? leftInstance.caps ?? [] : []).concat(rightInstance ? rightInstance.caps ?? [] : []);
+                if (newResultValue !== resultValue) {
+                    this.updateInstance(e.time, newResultValue, (0, reference_1.joinReferences)(leftInstance ? leftInstance.references : [], rightInstance ? rightInstance.references : []), resultCaps);
+                    resultValue = newResultValue;
+                }
+            }
+        }
+        return this.instances;
+    }
+    updateInstance(time, value, references, caps) {
+        if (value) {
+            this.instances.push({
+                id: this.resolvedTimeline.getInstanceId(),
+                start: time,
+                end: null,
+                references: references,
+                caps: caps,
+            });
+        }
+        else {
+            const lastInstance = (0, lib_1.last)(this.instances);
+            if (lastInstance) {
+                lastInstance.end = time;
+                // don't update reference on end
+            }
+        }
+    }
+}
+/** Helper class for various operators */
+class Operators {
+    static get(operator) {
+        switch (operator) {
+            case '+':
+                return Operators.Add;
+            case '-':
+                return Operators.Subtract;
+            case '*':
+                return Operators.Multiply;
+            case '/':
+                return Operators.Divide;
+            case '%':
+                return Operators.Modulo;
+            default: {
+                (0, lib_1.assertNever)(operator);
+                return Operators.Null;
+            }
+        }
+    }
+}
+Operators.Add = (a, b) => {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value + b.value,
+        references: (0, reference_1.joinReferences)(a.references, b.references),
+    };
+};
+Operators.Subtract = (a, b) => {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value - b.value,
+        references: (0, reference_1.joinReferences)(a.references, b.references),
+    };
+};
+Operators.Multiply = (a, b) => {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value * b.value,
+        references: (0, reference_1.joinReferences)(a.references, b.references),
+    };
+};
+Operators.Divide = (a, b) => {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value / b.value,
+        references: (0, reference_1.joinReferences)(a.references, b.references),
+    };
+};
+Operators.Modulo = (a, b) => {
+    if (a === null || b === null)
+        return null;
+    return {
+        value: a.value % b.value,
+        references: (0, reference_1.joinReferences)(a.references, b.references),
+    };
+};
+Operators.Null = () => {
+    return null;
+};
+
+},{"./lib/cap":24,"./lib/event":25,"./lib/expression":26,"./lib/lib":28,"./lib/reference":30}],19:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ResolvedTimelineHandler = void 0;
+const ExpressionHandler_1 = require("./ExpressionHandler");
+const ReferenceHandler_1 = require("./ReferenceHandler");
+const lib_1 = require("./lib/lib");
+const InstanceHandler_1 = require("./InstanceHandler");
+const reference_1 = require("./lib/reference");
+const event_1 = require("./lib/event");
+const instance_1 = require("./lib/instance");
+const timeline_1 = require("./lib/timeline");
+const LayerStateHandler_1 = require("./LayerStateHandler");
+const expression_1 = require("./lib/expression");
+const performance_1 = require("./lib/performance");
+const CacheHandler_1 = require("./CacheHandler");
+/**
+ * A ResolvedTimelineHandler instance is short-lived and used to resolve a timeline.
+ * Intended usage:
+ * 1. const resolver = new ResolvedTimelineHandler(options)
+ * 2. timelineObjects.forEach(obj => resolver.addTimelineObject(obj))
+ * 3. resolver.resolveAllTimelineObjs()
+ */
+class ResolvedTimelineHandler {
+    constructor(options) {
+        this.options = options;
+        /** Maps object id to object */
+        this.objectsMap = new Map();
+        /** Maps className to a list of object ids  */
+        this.classesMap = new Map();
+        /** Maps layer to a list of object ids  */
+        this.layersMap = new Map();
+        /**
+         * Maps an array of object ids to an object id (objects that directly reference an reference).
+         */
+        this.directReferenceMap = new Map();
+        /** How many objects that was actually resolved (is affected when using cache) */
+        this.statisticResolvingObjectCount = 0;
+        /** How many times an object where resolved. (is affected when using cache) */
+        this.statisticResolvingCount = 0;
+        /**
+         * A Map of strings (instance hashes) that is used to determine if an objects instances have changed.
+         * Maps objectId -> instancesHash
+         */
+        this.resolvedObjInstancesHash = new Map();
+        /**
+         * List of explanations fow why an object changed during a resolve iteration.
+         * Used for debugging and Errors
+         */
+        this.changedObjIdsExplanations = [];
+        /**
+         * A Map that contains the objects that needs to resolve again.
+         * Object are added into this after this.resolveConflictsForLayer()
+         */
+        this.objectsToReResolve = new Map();
+        /** Counter that increases during resolving, for every object that might need re-resolving*/
+        this.objectResolveCount = 0;
+        /** Error message, is set when an error is encountered and this.options.dontThrowOnError is set */
+        this._resolveError = undefined;
+        this._idCount = 0;
+        this.expression = new ExpressionHandler_1.ExpressionHandler(false, this.options.skipValidation);
+        this.instance = new InstanceHandler_1.InstanceHandler(this);
+        this.reference = new ReferenceHandler_1.ReferenceHandler(this, this.instance);
+        this.debug = this.options.debug ?? false;
+    }
+    get resolveError() {
+        return this._resolveError;
+    }
+    /** Populate ResolvedTimelineHandler with a timeline-object. */
+    addTimelineObject(obj) {
+        this._addTimelineObject(obj, 0, undefined, false);
+    }
+    /** Resolve the timeline. */
+    resolveAllTimelineObjs() {
+        const toc = (0, performance_1.tic)('  resolveAllTimelineObjs');
+        this.debugTrace('=================================== resolveAllTimelineObjs');
+        // Step 0: Preparations:
+        /** Number of objects in timeline */
+        const objectCount = this.objectsMap.size;
+        /** Max allowed number of iterations over objects */
+        const objectResolveCountMax = objectCount * (this.options.conflictMaxDepth ?? 5);
+        /*
+            The resolving algorithm basically works like this:
+
+            1a: Resolve all objects
+            1b: Resolve conflicts for all layers
+                Also determine which objects depend on changed objects due to conflicts
+
+            2: Loop, until there are no more changed objects:
+                2a: Resolve objects that depend on changed objects
+                2b: Resolve conflicts for affected layers in 2a
+                    Also determine which objects depend on changed objects due to conflicts
+        */
+        // Step 1a: Resolve all objects:
+        for (const obj of this.objectsMap.values()) {
+            this.resolveTimelineObj(obj);
+            // Populate this.resolvedObjInstancesHash now, so that only changes to the timeline instances
+            // in this.resolveConflictsForObjs() will be detected later:
+            this.resolvedObjInstancesHash.set(obj.id, (0, instance_1.getInstancesHash)(obj.resolved.instances));
+        }
+        if (this._resolveError)
+            return; // Abort on error
+        // Step 1b: Resolve conflicts for all objects:
+        this.resolveConflictsForObjs(null);
+        if (this._resolveError)
+            return; // Abort on error
+        // Step 2: re-resolve all changed objects, until no more changes are detected:
+        while (this.objectsToReResolve.size > 0) {
+            if (this.objectResolveCount >= objectResolveCountMax) {
+                const error = new Error(`Maximum conflict iteration reached (${this.objectResolveCount}). This is due to a circular dependency in the timeline. Latest changes:\n${this.changedObjIdsExplanations.join('Next iteration -------------------------\n')}`);
+                if (this.options.dontThrowOnError) {
+                    this._resolveError = error;
+                    return;
+                }
+                else {
+                    throw error;
+                }
+            }
+            /* istanbul ignore if */
+            if (this.debug) {
+                this.debugTrace(`---------------------------------`);
+                this.debugTrace(`objectsToReResolve: [${Array.from(this.objectsToReResolve.entries())}]`);
+                this.debugTrace(`directReferences: [${Array.from(this.directReferenceMap.entries()).map(([key, value]) => `${key}: [${value}]`)}]`);
+            }
+            // Collect and reset all objects that depend on previously changed objects
+            const conflictObjectsToResolve = [];
+            for (const obj of this.objectsToReResolve.values()) {
+                this.objectResolveCount++;
+                // Force a new resolve, since the referenced objects might have changed (due to conflicts):
+                let needsConflictResolve = false;
+                if (!obj.resolved.resolvedReferences) {
+                    this.resolveTimelineObj(obj);
+                    needsConflictResolve = true;
+                }
+                if (!obj.resolved.resolvedConflicts) {
+                    needsConflictResolve = true;
+                }
+                if (needsConflictResolve) {
+                    conflictObjectsToResolve.push(obj);
+                }
+            }
+            if (this._resolveError)
+                return; // Abort on error
+            // Resolve conflicts for objects that depend on previously changed objects:
+            this.resolveConflictsForObjs(conflictObjectsToResolve);
+        }
+        toc();
+    }
+    /**
+     * Resolve a timeline-object.
+     * The Resolve algorithm works like this:
+     * 1. Go through the .enable expression(s) and look up all referenced objects.
+     * 	  1.5 For each referenced object, recursively resolve it first if not already resolved.
+     * 2. Collect the resolved instances and calculate the resulting list of resulting instances.
+     */
+    resolveTimelineObj(obj) {
+        if (obj.resolved.resolving) {
+            // Circular dependency
+            const error = Error(`Circular dependency when trying to resolve "${obj.id}"`);
+            if (this.options.dontThrowOnError) {
+                this._resolveError = error;
+                obj.resolved.firstResolved = true;
+                obj.resolved.resolvedReferences = true;
+                obj.resolved.resolving = false;
+                obj.resolved.instances = [];
+                return;
+            }
+            else {
+                throw error;
+            }
+        }
+        if (obj.resolved.resolvedReferences)
+            return; // already resolved
+        const toc = (0, performance_1.tic)('     resolveTimelineObj');
+        obj.resolved.resolving = true;
+        this.statisticResolvingCount++;
+        if (!obj.resolved.firstResolved) {
+            this.statisticResolvingObjectCount++;
+        }
+        this.debugTrace(`============ resolving "${obj.id}"`);
+        const directReferences = [];
+        let resultingInstances = [];
+        if (obj.disabled) {
+            resultingInstances = [];
+        }
+        else {
+            // Loop up references to the parent:
+            let parentInstances = null;
+            let hasParent = false;
+            let parentRef = undefined;
+            if (obj.resolved.parentId) {
+                hasParent = true;
+                parentRef = `#${obj.resolved.parentId}`;
+                const parentLookup = this.reference.lookupExpression(obj, this.expression.interpretExpression(parentRef), 'start');
+                // pushToArray(directReferences, parentLookup.allReferences)
+                parentInstances = parentLookup.result; // a start-reference will always return an array, or null
+                if (parentInstances !== null) {
+                    // Ensure that the parentInstances references the parent:
+                    for (const parentInstance of parentInstances) {
+                        parentInstance.references = (0, reference_1.joinReferences)(parentInstance.references, parentRef);
+                    }
+                }
+            }
+            const enables = (0, lib_1.ensureArray)(obj.enable);
+            for (let i = 0; i < enables.length; i++) {
+                const enable = enables[i];
+                // Resolve the the enable.repeating expression:
+                const lookupRepeating = enable.repeating !== undefined
+                    ? this.lookupExpression(obj, directReferences, enable.repeating, 'duration')
+                    : { result: null };
+                let lookedupRepeating;
+                if (lookupRepeating.result === null) {
+                    // Do nothing
+                    lookedupRepeating = null;
+                }
+                else if ((0, lib_1.isArray)(lookupRepeating.result)) {
+                    if (lookupRepeating.result.length === 0) {
+                        lookedupRepeating = null;
+                    }
+                    else if (lookupRepeating.result.length === 1) {
+                        lookedupRepeating = (0, lib_1.literal)({
+                            value: lookupRepeating.result[0].start,
+                            references: lookupRepeating.result[0].references,
+                        });
+                    }
+                    else {
+                        // The lookup for repeating returned multiple instances.
+                        // Not supported at the moment, perhaps this could be supported in the future.
+                        /* istanbul ignore next */
+                        throw new Error(`lookupExpression should never return an array for .duration lookup`);
+                    }
+                }
+                else {
+                    lookedupRepeating = lookupRepeating.result;
+                }
+                /** Array of instances this enable-expression resulted in */
+                let enableInstances;
+                if (enable.while !== undefined) {
+                    const whileExpr = 
+                    // Handle special case "1", 1:
+                    enable.while === '1' || enable.while === 1
+                        ? 'true'
+                        : // Handle special case "0", 0:
+                            enable.while === '0' || enable.while === 0
+                                ? 'false'
+                                : enable.while;
+                    // Note: a lookup for 'while' works the same as for 'start'
+                    const lookupWhile = this.lookupExpression(obj, directReferences, whileExpr, 'start');
+                    if (lookupWhile.result === null) {
+                        // Do nothing
+                        enableInstances = [];
+                    }
+                    else if ((0, lib_1.isArray)(lookupWhile.result)) {
+                        enableInstances = lookupWhile.result;
+                    }
+                    else if (lookupWhile.result !== null) {
+                        enableInstances = [
+                            {
+                                id: this.getInstanceId(),
+                                start: lookupWhile.result.value,
+                                end: null,
+                                references: lookupWhile.result.references,
+                            },
+                        ];
+                    }
+                    else {
+                        enableInstances = [];
+                    }
+                }
+                else if (enable.start !== undefined) {
+                    const lookupStart = this.lookupExpression(obj, directReferences, enable.start, 'start');
+                    const lookedupStarts = lookupStart.refersToParent
+                        ? this.reference.applyParentInstances(parentInstances, lookupStart.result)
+                        : lookupStart.result;
+                    const events = [];
+                    // const endEvents: EventForInstance[] = []
+                    let iStart = 0;
+                    let iEnd = 0;
+                    if (lookedupStarts === null) {
+                        // Do nothing
+                    }
+                    else if ((0, lib_1.isArray)(lookedupStarts)) {
+                        // Use the start-times of the instances and add them to the list of events:
+                        // (The end-times are irrelevant)
+                        for (let i = 0; i < lookedupStarts.length; i++) {
+                            const instance = lookedupStarts[i];
+                            const eventId = `${obj.id}_${iStart++}`;
+                            events.push({
+                                time: instance.start,
+                                value: true,
+                                data: { instance: instance, id: eventId },
+                                references: instance.references,
+                            });
+                        }
+                    }
+                    else {
+                        events.push({
+                            time: lookedupStarts.value,
+                            value: true,
+                            data: {
+                                instance: {
+                                    id: this.getInstanceId(),
+                                    start: lookedupStarts.value,
+                                    end: null,
+                                    references: lookedupStarts.references,
+                                },
+                                id: `${obj.id}_${iStart++}`,
+                            },
+                            references: lookedupStarts.references,
+                        });
+                    }
+                    if (enable.end !== undefined) {
+                        const lookupEnd = this.lookupExpression(obj, directReferences, enable.end, 'end');
+                        /** Contains an inverted list of instances. Therefore .start means an end */
+                        const lookedupEnds = !lookupEnd
+                            ? null
+                            : lookupEnd.refersToParent
+                                ? this.reference.applyParentInstances(parentInstances, lookupEnd.result)
+                                : lookupEnd.result;
+                        if (lookedupEnds === null) {
+                            // Do nothing
+                        }
+                        else if ((0, lib_1.isArray)(lookedupEnds)) {
+                            // Use the start-times of the instances and add them (as end-events) to the list:
+                            // (The end-times are irrelevant)
+                            for (let i = 0; i < lookedupEnds.length; i++) {
+                                const instance = lookedupEnds[i];
+                                events.push({
+                                    time: instance.start,
+                                    value: false,
+                                    data: { instance: instance, id: `${obj.id}_${iEnd++}` },
+                                    references: instance.references,
+                                });
+                            }
+                        }
+                        else if (lookedupEnds) {
+                            events.push({
+                                time: lookedupEnds.value,
+                                value: false,
+                                data: {
+                                    instance: {
+                                        id: this.getInstanceId(),
+                                        start: lookedupEnds.value,
+                                        end: null,
+                                        references: lookedupEnds.references,
+                                    },
+                                    id: `${obj.id}_${iEnd++}`,
+                                },
+                                references: lookedupEnds.references,
+                            });
+                        }
+                    }
+                    else if (enable.duration !== undefined) {
+                        const lookupDuration = this.lookupExpression(obj, directReferences, enable.duration, 'duration');
+                        let lookedupDuration = lookupDuration.result;
+                        if (lookedupDuration === null) {
+                            // Do nothing
+                        }
+                        else if ((0, lib_1.isArray)(lookedupDuration)) {
+                            if (lookedupDuration.length === 1) {
+                                lookedupDuration = (0, lib_1.literal)({
+                                    value: lookedupDuration[0].start,
+                                    references: lookedupDuration[0].references,
+                                });
+                            }
+                            else if (lookedupDuration.length === 0) {
+                                lookedupDuration = null;
+                            }
+                            else {
+                                // Lookup rendeded multiple durations.
+                                // This is unsupported at the moment, but could possibly be added in the future.
+                                /* istanbul ignore next */
+                                throw new Error(`lookedupDuration should never return an array for .duration lookup`);
+                            }
+                        }
+                        if (lookedupDuration !== null) {
+                            if (lookedupRepeating !== null && lookedupDuration.value > lookedupRepeating.value) {
+                                // Cap duration to repeating duration
+                                lookedupDuration.value = lookedupRepeating.value;
+                            }
+                            // Go through all pre-existing start-events, and add end-events for each of them.
+                            for (let i = 0; i < events.length; i++) {
+                                const startEvent = events[i];
+                                if (startEvent.value) {
+                                    // Is a start-event
+                                    const time = startEvent.time + lookedupDuration.value;
+                                    const references = (0, reference_1.joinReferences)(startEvent.references, lookedupDuration.references);
+                                    events.push({
+                                        time: time,
+                                        value: false,
+                                        data: {
+                                            id: startEvent.data.id,
+                                            instance: {
+                                                id: startEvent.data.instance.id,
+                                                start: time,
+                                                end: null,
+                                                references: references,
+                                            },
+                                        },
+                                        references: references,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    enableInstances = this.instance.convertEventsToInstances(events, false, false, 
+                    // Omit the referenced originalStart/End when using enable.start:
+                    true);
+                    // Cap those instances to the parent instances:
+                    if (parentRef && parentInstances !== null) {
+                        const parentInstanceMap = new Map();
+                        for (const instance of parentInstances) {
+                            parentInstanceMap.set(instance.id, instance);
+                        }
+                        const cappedEnableInstances = [];
+                        for (const instance of enableInstances) {
+                            let matchedParentInstance = undefined;
+                            // Go through the references in reverse, because sometimes there are multiple matches, and the last one is probably the one we want to use.
+                            for (let i = instance.references.length - 1; i >= 0; i--) {
+                                const ref = instance.references[i];
+                                if ((0, reference_1.isInstanceReference)(ref)) {
+                                    matchedParentInstance = parentInstanceMap.get((0, reference_1.getRefInstanceId)(ref));
+                                    if (matchedParentInstance)
+                                        break;
+                                }
+                            }
+                            if (matchedParentInstance) {
+                                const cappedInstance = this.instance.capInstance(instance, matchedParentInstance);
+                                if (!cappedInstance.caps)
+                                    cappedInstance.caps = [];
+                                cappedInstance.caps.push((0, lib_1.literal)({
+                                    id: matchedParentInstance.id,
+                                    start: matchedParentInstance.start,
+                                    end: matchedParentInstance.end,
+                                }));
+                                cappedEnableInstances.push(cappedInstance);
+                            }
+                            else {
+                                cappedEnableInstances.push(instance);
+                            }
+                        }
+                        enableInstances = cappedEnableInstances;
+                    }
+                }
+                else {
+                    enableInstances = [];
+                }
+                enableInstances = this.instance.applyRepeatingInstances(enableInstances, lookedupRepeating);
+                // Add the instances resulting from this enable-expression to the list:
+                (0, lib_1.pushToArray)(resultingInstances, enableInstances);
+            }
+            // Cap the instances to the parent instances:
+            if (hasParent) {
+                resultingInstances = this.capInstancesToParentInstances({
+                    instances: resultingInstances,
+                    parentInstances,
+                });
+            }
+        }
+        // Make the instance ids unique:
+        const idSet = new Set();
+        for (const instance of resultingInstances) {
+            if (idSet.has(instance.id)) {
+                instance.id = `${instance.id}_${this.getInstanceId()}`;
+            }
+            idSet.add(instance.id);
+        }
+        if (obj.seamless && resultingInstances.length > 1) {
+            resultingInstances = this.instance.cleanInstances(resultingInstances, true, false);
+        }
+        if (obj.resolved.parentId) {
+            directReferences.push(`#${obj.resolved.parentId}`);
+        }
+        if (!obj.resolved.firstResolved) {
+            // This only needs to be done upon first resolve:
+            this.updateDirectReferenceMap(obj, directReferences);
+        }
+        obj.resolved.firstResolved = true;
+        obj.resolved.resolvedReferences = true;
+        obj.resolved.resolving = false;
+        obj.resolved.instances = resultingInstances;
+        if (this.debug) {
+            this.debugTrace(`directReferences "${obj.id}": ${JSON.stringify(directReferences)}`);
+            this.debugTrace(`resolved "${obj.id}": ${JSON.stringify(obj.resolved.instances)}`);
+        }
+        // Finally:
+        obj.resolved.resolving = false;
+        toc();
+    }
+    getStatistics() {
+        const toc = (0, performance_1.tic)('  getStatistics');
+        if (this.options.skipStatistics) {
+            return {
+                totalCount: 0,
+                resolvedInstanceCount: 0,
+                resolvedObjectCount: 0,
+                resolvedGroupCount: 0,
+                resolvedKeyframeCount: 0,
+                resolvingObjectCount: 0,
+                resolvingCount: 0,
+            };
+        }
+        const statistics = {
+            totalCount: 0,
+            resolvedInstanceCount: 0,
+            resolvedObjectCount: 0,
+            resolvedGroupCount: 0,
+            resolvedKeyframeCount: 0,
+            resolvingObjectCount: this.statisticResolvingObjectCount,
+            resolvingCount: this.statisticResolvingCount,
+        };
+        for (const obj of this.objectsMap.values()) {
+            statistics.totalCount += 1;
+            if (obj.isGroup) {
+                statistics.resolvedGroupCount += 1;
+            }
+            if (obj.resolved.isKeyframe) {
+                statistics.resolvedKeyframeCount += 1;
+            }
+            else {
+                statistics.resolvedObjectCount += 1;
+            }
+            statistics.resolvedInstanceCount += obj.resolved.instances.length;
+        }
+        toc();
+        return statistics;
+    }
+    initializeCache(cacheObj) {
+        this.cache = new CacheHandler_1.CacheHandler(cacheObj, this);
+        return this.cache;
+    }
+    /**
+     * Returns an object.
+     * type-wise, assumes you know what object you're looking for
+     */
+    getObject(objId) {
+        return this.objectsMap.get(objId);
+    }
+    /**
+     * Returns object ids on a layer
+     * type-wise, assumes you know what layer you're looking for
+     */
+    getLayerObjects(layer) {
+        return this.layersMap.get(layer);
+    }
+    /**
+     * Returns object ids on a layer
+     * type-wise, assumes you know what className you're looking for
+     */
+    getClassObjects(className) {
+        return this.classesMap.get(className);
+    }
+    capInstancesToParentInstances(arg) {
+        if (!arg.parentInstances)
+            return [];
+        const events = [];
+        for (const instance of arg.instances) {
+            events.push({
+                time: instance.start,
+                value: true,
+                references: instance.references,
+                data: { instance, isParent: false },
+            });
+            if (instance.end !== null) {
+                events.push({
+                    time: instance.end,
+                    value: false,
+                    references: instance.references,
+                    data: { instance, isParent: false },
+                });
+            }
+        }
+        for (const instance of arg.parentInstances) {
+            events.push({
+                time: instance.start,
+                value: true,
+                references: instance.references,
+                data: { instance, isParent: true },
+            });
+            if (instance.end !== null) {
+                events.push({
+                    time: instance.end,
+                    value: false,
+                    references: instance.references,
+                    data: { instance, isParent: true },
+                });
+            }
+        }
+        (0, event_1.sortEvents)(events, compareEvents);
+        const parentActiveInstances = [];
+        const childActiveInstances = [];
+        let currentActive = undefined;
+        const cappedInstances = [];
+        function finalizeCurrentActive() {
+            if (currentActive) {
+                cappedInstances.push(currentActive.instance);
+                currentActive = undefined;
+            }
+        }
+        for (const event of events) {
+            if (event.data.isParent) {
+                // Parent instance
+                if (event.value) {
+                    parentActiveInstances.push(event.data.instance);
+                }
+                else {
+                    (0, instance_1.spliceInstances)(parentActiveInstances, (i) => (i === event.data.instance ? undefined : i));
+                }
+            }
+            else {
+                // Child instance
+                if (event.value) {
+                    childActiveInstances.push(event.data.instance);
+                }
+                else {
+                    (0, instance_1.spliceInstances)(childActiveInstances, (i) => (i === event.data.instance ? undefined : i));
+                }
+            }
+            const childInstance = childActiveInstances[childActiveInstances.length - 1];
+            const parentInstance = parentActiveInstances[parentActiveInstances.length - 1];
+            /** If there is an active child instance */
+            const toBeEnabled = Boolean(childInstance && parentInstance);
+            if (toBeEnabled) {
+                if (currentActive) {
+                    if (
+                    // Check if instance is still the same:
+                    childInstance.id !== currentActive.instance.id ||
+                        (parentInstance !== currentActive.parent &&
+                            // Check if parent still is active:
+                            !parentActiveInstances.includes(currentActive.parent))) {
+                        // parent isn't active anymore, stop and start a new instance:
+                        // Stop instance:
+                        currentActive.instance.end = event.time;
+                        currentActive.instance.originalEnd = currentActive.instance.originalEnd ?? event.time;
+                        currentActive.instance.references = (0, reference_1.joinReferences)(currentActive.instance.references, event.data.instance.references);
+                        finalizeCurrentActive();
+                    }
+                    else {
+                        // Continue an active instance
+                        if (currentActive.instance.id !== childInstance.id) {
+                            currentActive.instance.references = (0, reference_1.joinReferences)(currentActive.instance.references, childInstance.references);
+                        }
+                    }
+                }
+                if (!currentActive) {
+                    // Start a new instance:
+                    currentActive = {
+                        instance: {
+                            ...childInstance,
+                            start: event.time,
+                            end: null,
+                            // originalStart: childInstance.originalStart ?? event.time,
+                            // originalEnd: childInstance.originalEnd ?? null, // set later
+                            originalStart: childInstance.originalStart ?? childInstance.start,
+                            originalEnd: childInstance.originalEnd ?? childInstance.end ?? null,
+                            references: (0, reference_1.joinReferences)(childInstance.references, ...parentActiveInstances.map((i) => i.references)),
+                        },
+                        parent: parentInstance,
+                    };
+                }
+            }
+            else {
+                if (currentActive) {
+                    // Stop instance:
+                    currentActive.instance.end = event.time;
+                    currentActive.instance.originalEnd = currentActive.instance.originalEnd ?? event.time;
+                    currentActive.instance.references = (0, reference_1.joinReferences)(currentActive.instance.references, event.data.instance.references);
+                    finalizeCurrentActive();
+                }
+            }
+        }
+        finalizeCurrentActive();
+        return cappedInstances;
+    }
+    updateDirectReferenceMap(obj, directReferences) {
+        obj.resolved.directReferences = directReferences;
+        for (const ref of directReferences) {
+            const objectsThisIsReferencing = [];
+            if ((0, reference_1.isObjectReference)(ref)) {
+                const objId = (0, reference_1.getRefObjectId)(ref);
+                objectsThisIsReferencing.push(objId);
+            }
+            else if ((0, reference_1.isClassReference)(ref)) {
+                const className = (0, reference_1.getRefClass)(ref);
+                for (const objId of this.getClassObjects(className) ?? []) {
+                    objectsThisIsReferencing.push(objId);
+                }
+            }
+            else if ((0, reference_1.isLayerReference)(ref)) {
+                const layer = (0, reference_1.getRefLayer)(ref);
+                for (const objId of this.getLayerObjects(layer) ?? []) {
+                    objectsThisIsReferencing.push(objId);
+                }
+            }
+            else if (
+            /* istanbul ignore next */
+            (0, reference_1.isInstanceReference)(ref)) {
+                // do nothing
+            }
+            else {
+                /* istanbul ignore next */
+                (0, lib_1.assertNever)(ref);
+            }
+            for (const refObjId of objectsThisIsReferencing) {
+                let refs = this.directReferenceMap.get(refObjId);
+                if (!refs) {
+                    refs = [];
+                    this.directReferenceMap.set(refObjId, refs);
+                }
+                refs.push(obj.id);
+            }
+        }
+    }
+    getObjectsLayers(objs) {
+        const layers = new Set();
+        for (const obj of objs) {
+            if ((0, timeline_1.objHasLayer)(obj)) {
+                layers.add(`${obj.layer}`);
+            }
+        }
+        return Array.from(layers.values());
+    }
+    /** Returns a list of all object's layers */
+    getAllObjectLayers() {
+        if (!this.allObjectLayersCache) {
+            // Cache this, since this won't change:
+            this.allObjectLayersCache = this.getObjectsLayers(this.objectsMap.values());
+        }
+        return this.allObjectLayersCache;
+    }
+    /** Look up an expression, update references and return it. */
+    lookupExpression(obj, directReferences, expr, context) {
+        const simplifiedExpression = this.expression.simplifyExpression(expr);
+        const lookupResult = this.reference.lookupExpression(obj, simplifiedExpression, context);
+        (0, lib_1.pushToArray)(directReferences, lookupResult.allReferences);
+        // If expression is a constant, it is assumed to be a time relative to its parent:
+        const refersToParent = obj.resolved.parentId && (0, expression_1.isConstantExpr)(simplifiedExpression);
+        return {
+            allReferences: lookupResult.allReferences,
+            result: lookupResult.result,
+            refersToParent,
+        };
+    }
+    _addTimelineObject(obj, 
+    /** A number that increases the more levels inside of a group the objects is. 0 = no parent */
+    levelDeep, 
+    /** ID of the parent object */
+    parentId, isKeyframe) {
+        const toc = (0, performance_1.tic)('  addTimelineObject');
+        // Is it already added?
+        if (!this.options.skipValidation) {
+            if (this.objectsMap.has(obj.id)) {
+                /* istanbul ignore next */
+                throw Error(`All timelineObjects must be unique! (duplicate: "${obj.id}")`);
+            }
+        }
+        // Add the object:
+        {
+            const o = {
+                ...obj,
+                resolved: {
+                    firstResolved: false,
+                    resolvedReferences: false,
+                    resolvedConflicts: false,
+                    resolving: false,
+                    instances: [],
+                    levelDeep: levelDeep,
+                    isSelfReferencing: false,
+                    directReferences: [],
+                    parentId: parentId,
+                    isKeyframe: isKeyframe,
+                },
+            };
+            this.objectsMap.set(obj.id, o);
+            if (obj.classes) {
+                for (let i = 0; i < obj.classes.length; i++) {
+                    const className = obj.classes[i];
+                    if (className) {
+                        let classList = this.classesMap.get(className);
+                        if (!classList) {
+                            classList = [];
+                            this.classesMap.set(className, classList);
+                        }
+                        classList.push(obj.id);
+                    }
+                }
+            }
+            if ((0, timeline_1.objHasLayer)(obj)) {
+                const layer = `${obj.layer}`;
+                let layerList = this.layersMap.get(layer);
+                if (!layerList) {
+                    layerList = [];
+                    this.layersMap.set(layer, layerList);
+                }
+                layerList.push(obj.id);
+            }
+        }
+        // Go through children and keyframes:
+        {
+            // Add children:
+            if (obj.isGroup && obj.children) {
+                for (let i = 0; i < obj.children.length; i++) {
+                    const child = obj.children[i];
+                    this._addTimelineObject(child, levelDeep + 1, obj.id, false);
+                }
+            }
+            // Add keyframes:
+            if (obj.keyframes) {
+                for (let i = 0; i < obj.keyframes.length; i++) {
+                    const keyframe = obj.keyframes[i];
+                    const kf2 = {
+                        ...keyframe,
+                        layer: '',
+                    };
+                    this._addTimelineObject(kf2, levelDeep + 1, obj.id, true);
+                }
+            }
+        }
+        toc();
+    }
+    /**
+     * Resolve conflicts for all layers of the provided objects
+     */
+    resolveConflictsForObjs(
+    /** null means all layers */
+    objs) {
+        const toc = (0, performance_1.tic)('     resolveConflictsForObjs');
+        // These need to be cleared,
+        // as they are populated during the this.updateObjectsToReResolve() below:
+        this.changedObjIdsExplanations = [];
+        this.objectsToReResolve.clear();
+        /** List of layers to resolve conflicts on */
+        let layers;
+        if (objs === null) {
+            layers = this.getAllObjectLayers();
+        }
+        else {
+            layers = this.getObjectsLayers(objs);
+        }
+        for (const layer of layers) {
+            const maybeChangedObjs = this.resolveConflictsForLayer(layer);
+            // run this.updateObjectsToReResolve() here (as opposed to outside the loop),
+            // to allow for a fast-path in resolveConflictsForLayer that skips resolving that layer if it contains
+            // objects that depend on already changed objects.
+            this.updateObjectsToReResolve(maybeChangedObjs);
+        }
+        toc();
+    }
+    /**
+     * Resolve conflicts for a layer
+     * @returns A list of objects on that layer
+     */
+    resolveConflictsForLayer(layer) {
+        const handler = new LayerStateHandler_1.LayerStateHandler(this, this.instance, layer);
+        // Fast path: If an object on this layer depends on an already changed object we should skip this layer, this iteration.
+        // Because the objects will likely change during the next resolve-iteration anyway.
+        for (const objId of handler.objectIdsOnLayer) {
+            if (this.objectsToReResolve.has(objId)) {
+                this.debugTrace(`optimization: Skipping "${layer}" since "${objId}" changed`);
+                return [];
+            }
+        }
+        handler.resolveConflicts();
+        return handler.objectsOnLayer;
+    }
+    /** Returns the next unique instance id */
+    getInstanceId() {
+        return `@${(this._idCount++).toString(36)}`;
+    }
+    updateObjectsToReResolve(maybeChangedObjs) {
+        const toc = (0, performance_1.tic)('     updateObjectsToReResolve');
+        const changedObjs = new Set();
+        for (const obj of maybeChangedObjs) {
+            // Check if the instances have changed:
+            const instancesHash = (0, instance_1.getInstancesHash)(obj.resolved.instances);
+            const prevHash = this.resolvedObjInstancesHash.get(obj.id) ?? 'not-found';
+            if (instancesHash !== prevHash) {
+                this.changedObjIdsExplanations.push(`"${obj.id}" changed from: \n   ${prevHash}\n   , to \n   ${instancesHash}\n`);
+                if (this.changedObjIdsExplanations.length > 2)
+                    this.changedObjIdsExplanations.shift();
+                this.debugTrace(`changed: ${obj.id}: "${prevHash}" -> "${instancesHash}"`);
+                changedObjs.add(obj.id);
+                this.resolvedObjInstancesHash.set(obj.id, instancesHash);
+            }
+        }
+        for (const changedObjId of changedObjs.values()) {
+            // Find all objects that depend on this:
+            const directReferences = this.directReferenceMap.get(changedObjId) ?? [];
+            for (const objId of directReferences) {
+                const obj = this.getObject(objId);
+                obj.resolved.resolvedReferences = false;
+                // Note: obj.resolved.resolvedConflicts will be set to false later when resolving references
+                this.objectsToReResolve.set(obj.id, obj);
+            }
+        }
+        toc();
+    }
+    debugTrace(...args) {
+        if (this.debug)
+            console.log(...args);
+    }
+}
+exports.ResolvedTimelineHandler = ResolvedTimelineHandler;
+function compareEvents(a, b) {
+    // start event be first:
+    const aValue = a.value;
+    const bValue = b.value;
+    if (aValue && !bValue)
+        return -1;
+    if (!aValue && bValue)
+        return 1;
+    const aIsParent = a.data.isParent;
+    const bIsParent = b.data.isParent;
+    if (aValue) {
+        // start: parents first:
+        if (aIsParent && !bIsParent)
+            return -1;
+        if (!aIsParent && bIsParent)
+            return 1;
+    }
+    else {
+        // end: parents last:
+        if (aIsParent && !bIsParent)
+            return 1;
+        if (!aIsParent && bIsParent)
+            return -1;
+    }
+    // parents first:
+    // if (a.data.isParent && !b.data.isParent) return -1
+    // if (!a.data.isParent && b.data.isParent) return 1
+    return 0;
+}
+
+},{"./CacheHandler":14,"./ExpressionHandler":15,"./InstanceHandler":16,"./LayerStateHandler":17,"./ReferenceHandler":18,"./lib/event":25,"./lib/expression":26,"./lib/instance":27,"./lib/lib":28,"./lib/performance":29,"./lib/reference":30,"./lib/timeline":31}],20:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ResolverHandler = void 0;
+const ResolvedTimelineHandler_1 = require("./ResolvedTimelineHandler");
+const resolvedTimeline_1 = require("../api/resolvedTimeline");
+const lib_1 = require("./lib/lib");
+const performance_1 = require("./lib/performance");
+const timeline_1 = require("./lib/timeline");
+const TimelineValidator_1 = require("./TimelineValidator");
+/**
+ * Note: A Resolver instance is short-lived and used to resolve a timeline.
+ * Intended usage:
+ * 1. const resolver = new Resolver(options)
+ * 2. resolver.run(timeline)
+ */
+class ResolverHandler {
+    constructor(options) {
+        this.options = options;
+        this.hasRun = false;
+        this.nextEvents = [];
+        const toc = (0, performance_1.tic)('new Resolver');
+        this.resolvedTimeline = new ResolvedTimelineHandler_1.ResolvedTimelineHandler(this.options);
+        this.validator = new TimelineValidator_1.TimelineValidator();
+        toc();
+    }
+    /**
+     * Resolves a timeline, i.e. resolves the references between objects
+     * This method can only be run once per Resolver instance.
+     */
+    resolveTimeline(timeline) {
+        const toc = (0, performance_1.tic)('resolveTimeline');
+        /* istanbul ignore if */
+        if (this.hasRun)
+            throw new Error(`Resolver.resolveTimeline can only run once per instance!
+Usage:
+const resolver = new Resolver(options);
+resolver.run(timeline);`);
+        this.hasRun = true;
+        // Step 0: Validate the timeline:
+        if (!this.options.skipValidation) {
+            this.validator.validateTimeline(timeline, false);
+        }
+        // Step 1: Populate ResolvedTimeline with the timeline:
+        for (const obj of timeline) {
+            this.resolvedTimeline.addTimelineObject(obj);
+        }
+        // Step 2: Use cache:
+        let cacheHandler;
+        if (this.options.cache) {
+            cacheHandler = this.resolvedTimeline.initializeCache(this.options.cache);
+            cacheHandler.determineChangedObjects();
+        }
+        // Step 3: Go through and resolve all objects:
+        this.resolvedTimeline.resolveAllTimelineObjs();
+        // Step 4: Populate nextEvents:
+        this.updateNextEvents();
+        // Step 5: persist cache
+        if (cacheHandler) {
+            cacheHandler.persistData();
+        }
+        const resolvedTimeline = (0, lib_1.literal)({
+            objects: (0, lib_1.mapToObject)(this.resolvedTimeline.objectsMap),
+            classes: (0, lib_1.mapToObject)(this.resolvedTimeline.classesMap),
+            layers: (0, lib_1.mapToObject)(this.resolvedTimeline.layersMap),
+            nextEvents: this.nextEvents,
+            statistics: this.resolvedTimeline.getStatistics(),
+            error: this.resolvedTimeline.resolveError,
+        });
+        toc();
+        return resolvedTimeline;
+    }
+    /** Update this.nextEvents */
+    updateNextEvents() {
+        const toc = (0, performance_1.tic)('  updateNextEvents');
+        this.nextEvents = [];
+        const allObjects = [];
+        const allKeyframes = [];
+        for (const obj of this.resolvedTimeline.objectsMap.values()) {
+            if (obj.resolved.isKeyframe) {
+                allKeyframes.push(obj);
+            }
+            else {
+                allObjects.push(obj);
+            }
+        }
+        /** Used to fast-track in cases where there are no keyframes */
+        const hasKeyframes = allKeyframes.length > 0;
+        const objectInstanceStartTimes = new Set();
+        const objectInstanceEndTimes = new Set();
+        // Go through keyframes last:
+        for (const obj of [...allObjects, ...allKeyframes]) {
+            if (!obj.resolved.isKeyframe) {
+                if (!(0, timeline_1.objHasLayer)(obj))
+                    continue; // transparent objects are omitted in NextEvents
+            }
+            else if (obj.resolved.parentId !== undefined) {
+                const parentObj = this.resolvedTimeline.getObject(obj.resolved.parentId);
+                if (parentObj) {
+                    /* istanbul ignore if */
+                    if (!(0, timeline_1.objHasLayer)(parentObj))
+                        continue; // Keyframes of transparent objects are omitted in NextEvents
+                }
+            }
+            for (let i = 0; i < obj.resolved.instances.length; i++) {
+                const instance = obj.resolved.instances[i];
+                if (instance.start > this.options.time && instance.start < (this.options.limitTime ?? Infinity)) {
+                    let useThis = true;
+                    if (hasKeyframes) {
+                        if (!obj.resolved.isKeyframe) {
+                            objectInstanceStartTimes.add(`${obj.id}_${instance.start}`);
+                        }
+                        else {
+                            // No need to put keyframe event if its parent starts at the same time:
+                            if (objectInstanceStartTimes.has(`${obj.resolved.parentId}_${instance.start}`)) {
+                                useThis = false;
+                            }
+                        }
+                    }
+                    if (useThis) {
+                        this.nextEvents.push({
+                            objId: obj.id,
+                            type: obj.resolved.isKeyframe ? resolvedTimeline_1.EventType.KEYFRAME : resolvedTimeline_1.EventType.START,
+                            time: instance.start,
+                        });
+                    }
+                }
+                if (instance.end !== null &&
+                    instance.end > this.options.time &&
+                    instance.end < (this.options.limitTime ?? Infinity)) {
+                    let useThis = true;
+                    if (hasKeyframes) {
+                        if (!obj.resolved.isKeyframe) {
+                            objectInstanceEndTimes.add(`${obj.id}_${instance.end}`);
+                        }
+                        else {
+                            // No need to put keyframe event if its parent ends at the same time:
+                            if (objectInstanceEndTimes.has(`${obj.resolved.parentId}_${instance.end}`)) {
+                                useThis = false;
+                            }
+                        }
+                    }
+                    if (useThis) {
+                        this.nextEvents.push({
+                            objId: obj.id,
+                            type: obj.resolved.isKeyframe ? resolvedTimeline_1.EventType.KEYFRAME : resolvedTimeline_1.EventType.END,
+                            time: instance.end,
+                        });
+                    }
+                }
+            }
+        }
+        this.nextEvents.sort(compareNextEvents);
+        toc();
+    }
+}
+exports.ResolverHandler = ResolverHandler;
+function compareNextEvents(a, b) {
+    return a.time - b.time || b.type - a.type || (0, lib_1.compareStrings)(a.objId, b.objId);
+}
+
+},{"../api/resolvedTimeline":8,"./ResolvedTimelineHandler":19,"./TimelineValidator":22,"./lib/lib":28,"./lib/performance":29,"./lib/timeline":31}],21:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StateHandler = void 0;
+const instance_1 = require("./lib/instance");
+const lib_1 = require("./lib/lib");
+const performance_1 = require("./lib/performance");
+const timeline_1 = require("./lib/timeline");
+class StateHandler {
+    getState(resolvedTimeline, time, eventLimit = 0) {
+        const toc = (0, performance_1.tic)('getState');
+        const state = {
+            time: time,
+            layers: {},
+            nextEvents: resolvedTimeline.nextEvents.filter((e) => e.time > time),
+        };
+        if (eventLimit)
+            state.nextEvents = state.nextEvents.slice(0, eventLimit);
+        for (const obj of Object.values(resolvedTimeline.objects)) {
+            if (!(0, timeline_1.objHasLayer)(obj))
+                continue;
+            // Note: We can assume that it is not a keyframe here, because keyframes don't have layers
+            for (const instance of obj.resolved.instances) {
+                if ((0, instance_1.instanceIsActive)(instance, time)) {
+                    let contentIsOriginal = true;
+                    const objInstance = {
+                        ...obj,
+                        instance,
+                    };
+                    /* istanbul ignore if */
+                    if (state.layers[`${obj.layer}`]) {
+                        // There is already an object on this layer!
+                        console.error(state.layers[`${obj.layer}`]);
+                        console.error(objInstance);
+                        throw new Error(`Internal Error: There is already an object on layer "${obj.layer}"!`);
+                    }
+                    state.layers[`${obj.layer}`] = objInstance;
+                    // Now, apply keyframes:
+                    const objectKeyframes = obj.keyframes
+                        ? obj.keyframes.map((kf) => resolvedTimeline.objects[kf.id])
+                        : [];
+                    for (const keyframe of this.getActiveKeyframeInstances(objectKeyframes, time)) {
+                        if (contentIsOriginal) {
+                            // We don't want to modify the original content, so we deep-clone it before modifying it:
+                            objInstance.content = (0, lib_1.clone)(obj.content);
+                            contentIsOriginal = false;
+                        }
+                        StateHandler.applyKeyframeContent(objInstance.content, keyframe.content);
+                    }
+                }
+            }
+        }
+        toc();
+        return state;
+    }
+    /**
+     * Apply keyframe content onto its parent content.
+     * The keyframe content is deeply-applied onto the parent content.
+     */
+    static applyKeyframeContent(parentContent, keyframeContent) {
+        const toc = (0, performance_1.tic)('  applyKeyframeContent');
+        for (const [attr, value] of Object.entries(keyframeContent)) {
+            if ((0, lib_1.isObject)(value)) {
+                if ((0, lib_1.isArray)(value)) {
+                    // Value is an array
+                    if (!Array.isArray(parentContent[attr]))
+                        parentContent[attr] = [];
+                    this.applyKeyframeContent(parentContent[attr], value);
+                    parentContent[attr].splice(value.length, Infinity);
+                }
+                else {
+                    // Value is an object
+                    if (!(0, lib_1.isObject)(parentContent[attr]) || Array.isArray(parentContent[attr]))
+                        parentContent[attr] = {};
+                    this.applyKeyframeContent(parentContent[attr], value);
+                }
+            }
+            else {
+                parentContent[attr] = value;
+            }
+        }
+        toc();
+    }
+    getActiveKeyframeInstances(keyframes, time) {
+        const keyframeInstances = [];
+        for (const keyframe of keyframes) {
+            for (const instance of keyframe.resolved.instances) {
+                if ((0, instance_1.instanceIsActive)(instance, time)) {
+                    keyframeInstances.push({
+                        ...keyframe,
+                        instance,
+                    });
+                }
+            }
+        }
+        keyframeInstances.sort((a, b) => {
+            // Highest priority is applied last:
+            const aPriority = a.priority ?? 0;
+            const bPriority = b.priority ?? 0;
+            if (aPriority < bPriority)
+                return -1;
+            if (aPriority > bPriority)
+                return 1;
+            // Last start time is applied last:
+            if (a.instance.start < b.instance.start)
+                return -1;
+            if (a.instance.start > b.instance.start)
+                return 1;
+            /* istanbul ignore next */
+            return 0;
+        });
+        return keyframeInstances;
+    }
+}
+exports.StateHandler = StateHandler;
+
+},{"./lib/instance":27,"./lib/lib":28,"./lib/performance":29,"./lib/timeline":31}],22:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TimelineValidator = void 0;
+const ExpressionHandler_1 = require("./ExpressionHandler");
+const lib_1 = require("./lib/lib");
+const performance_1 = require("./lib/performance");
+/** These characters are reserved and cannot be used in ids, etc */
+const RESERVED_CHARACTERS = /[#.$]/g;
+/** These characters are reserved for possible future use and cannot be used in ids, etc */
+const FUTURE_RESERVED_CHARACTERS = /[=?@{}[\]^§]/g;
+/**
+ * Note: A TimelineValidator instance is short-lived and used to validate a timeline.
+ * Intended usage:
+ * 1. const validator = new TimelineValidator()
+ * 2. validator.validateTimeline(timeline)
+ * or:
+ * 1. const validator = new TimelineValidator()
+ * 2. validator.validateObject(obj)
+ * or:
+ * 1. const validator = new TimelineValidator()
+ * 2. validator.validateKeyframe(obj)
+ */
+class TimelineValidator {
+    constructor() {
+        this.uniqueIds = {};
+    }
+    /** Validates all objects in the timeline. Throws an error if something's wrong. */
+    validateTimeline(
+    /** The timeline to validate */
+    timeline, 
+    /** Set to true to enable some optional strict rules. Set this to true to increase future compatibility. */
+    strict) {
+        const toc = (0, performance_1.tic)('  validateTimeline');
+        for (let i = 0; i < timeline.length; i++) {
+            const obj = timeline[i];
+            this.validateObject(obj, strict);
+        }
+        toc();
+    }
+    /** Validates a simgle Timeline-object. Throws an error if something's wrong. */
+    validateObject(
+    /** The object to validate */
+    obj, 
+    /** Set to true to enable some optional strict rules. Set this to true to increase future compatibility. */
+    strict) {
+        if (!obj)
+            throw new Error(`Object is undefined`);
+        if (typeof obj !== 'object')
+            throw new Error(`Object is not an object`);
+        try {
+            this.validateId(obj, strict);
+            this.validateLayer(obj, strict);
+            this.validateContent(obj);
+            this.validateEnable(obj, strict);
+            if (obj.keyframes) {
+                for (let i = 0; i < obj.keyframes.length; i++) {
+                    const keyframe = obj.keyframes[i];
+                    try {
+                        this.validateKeyframe(keyframe, strict);
+                    }
+                    catch (e) {
+                        throw new Error(`Keyframe[${i}]: ${e}`);
+                    }
+                }
+            }
+            this.validateClasses(obj, strict);
+            if (obj.children && !obj.isGroup)
+                throw new Error(`Attribute "children" is set but "isGroup" is not`);
+            if (obj.isGroup && !obj.children)
+                throw new Error(`Attribute "isGroup" is set but "children" missing`);
+            if (obj.children) {
+                for (let i = 0; i < obj.children.length; i++) {
+                    const child = obj.children[i];
+                    try {
+                        this.validateObject(child, strict);
+                    }
+                    catch (e) {
+                        throw new Error(`Child[${i}]: ${e}`);
+                    }
+                }
+            }
+            if (obj.priority !== undefined && typeof obj.priority !== 'number')
+                throw new Error(`Attribute "priority" is not a number`);
+        }
+        catch (err) {
+            if (err instanceof Error) {
+                const err2 = new Error(`Object "${obj.id}": ${err.message}`);
+                err2.stack = err.stack;
+                throw err;
+            }
+            else
+                throw err;
+        }
+    }
+    /** Validates a simgle Timeline-object. Throws an error if something's wrong. */
+    validateKeyframe(
+    /** The object to validate */
+    keyframe, 
+    /** Set to true to enable some optional strict rules. Set this to true to increase future compatibility */
+    strict) {
+        if (!keyframe)
+            throw new Error(`Keyframe is undefined`);
+        if (typeof keyframe !== 'object')
+            throw new Error(`Keyframe is not an object`);
+        try {
+            this.validateId(keyframe, strict);
+            this.validateContent(keyframe);
+            this.validateEnable(keyframe, strict);
+            this.validateClasses(keyframe, strict);
+        }
+        catch (err) {
+            if (err instanceof Error) {
+                const err2 = new Error(`Keyframe "${keyframe.id}": ${err.message}`);
+                err2.stack = err.stack;
+                throw err;
+            }
+            else
+                throw err;
+        }
+    }
+    validateId(obj, strict) {
+        if (!obj.id)
+            throw new Error(`Object missing "id" attribute`);
+        if (typeof obj.id !== 'string')
+            throw new Error(`Object "id" attribute is not a string: "${obj.id}"`);
+        try {
+            TimelineValidator.validateReferenceString(obj.id, strict);
+        }
+        catch (err) {
+            throw new Error(`Object "id" attribute: ${err}`);
+        }
+        if (this.uniqueIds[obj.id])
+            throw new Error(`id "${obj.id}" is not unique`);
+        this.uniqueIds[obj.id] = true;
+    }
+    validateLayer(obj, strict) {
+        if (obj.layer === undefined)
+            throw new Error(`"layer" attribute is undefined. (If an object is to have no layer, set this to an empty string.)`);
+        try {
+            TimelineValidator.validateReferenceString(`${obj.layer}`, strict);
+        }
+        catch (err) {
+            throw new Error(`"layer" attribute: ${err}`);
+        }
+    }
+    validateContent(obj) {
+        if (!obj.content)
+            throw new Error(`"content" attribute must be set`);
+    }
+    validateEnable(obj, strict) {
+        if (!obj.enable)
+            throw new Error(`"enable" attribute must be set`);
+        const enables = (0, lib_1.ensureArray)(obj.enable);
+        for (let i = 0; i < enables.length; i++) {
+            const enable = enables[i];
+            if (enable.start !== undefined) {
+                if (strict && enable.while !== undefined)
+                    throw new Error(`"enable.start" and "enable.while" cannot be combined`);
+                if (strict && enable.end !== undefined && enable.duration !== undefined)
+                    throw new Error(`"enable.end" and "enable.duration" cannot be combined`);
+            }
+            else if (enable.while !== undefined) {
+                if (strict && enable.end !== undefined)
+                    throw new Error(`"enable.while" and "enable.end" cannot be combined`);
+                if (strict && enable.duration !== undefined)
+                    throw new Error(`"enable.while" and "enable.duration" cannot be combined`);
+            }
+            else
+                throw new Error(`"enable.start" or "enable.while" must be set`);
+        }
+    }
+    validateClasses(obj, strict) {
+        if (obj.classes) {
+            for (let i = 0; i < obj.classes.length; i++) {
+                const className = obj.classes[i];
+                if (className && typeof className !== 'string')
+                    throw new Error(`"classes[${i}]" is not a string`);
+                try {
+                    TimelineValidator.validateReferenceString(className, strict);
+                }
+                catch (err) {
+                    throw new Error(` "classes[${i}]": ${err}`);
+                }
+            }
+        }
+    }
+    /**
+     * Validates a string that is used in Timeline as a reference (an id, a class or layer)
+     * @param str The string to validate
+     * @param strict Set to true to enable some strict rules (rules that can possibly be ignored)
+     */
+    static validateReferenceString(str, strict) {
+        if (!str)
+            return;
+        const matchesOperators = ExpressionHandler_1.REGEXP_OPERATORS.test(str);
+        const matchesReserved = RESERVED_CHARACTERS.test(str);
+        const matchesFutureReserved = strict && FUTURE_RESERVED_CHARACTERS.test(str);
+        if (matchesOperators || matchesReserved || matchesFutureReserved) {
+            const matchOperators = str.match(ExpressionHandler_1.REGEXP_OPERATORS) ?? [];
+            const matchReserved = str.match(RESERVED_CHARACTERS) ?? [];
+            const matchFutureReserved = (strict && str.match(FUTURE_RESERVED_CHARACTERS)) || [];
+            throw new Error(`The string "${str}" contains characters which aren't allowed in Timeline: ${[
+                matchOperators.length > 0 && `${matchOperators.map((o) => `"${o}"`).join(', ')} (is an operator)`,
+                matchReserved.length > 0 &&
+                    `${matchReserved.map((o) => `"${o}"`).join(', ')} (is a reserved character)`,
+                matchFutureReserved.length > 0 &&
+                    `${matchFutureReserved
+                        .map((o) => `"${o}"`)
+                        .join(', ')} (is a strict reserved character and might be used in the future)`,
+            ]
+                .filter(Boolean)
+                .join(', ')}`);
+        }
+    }
+}
+exports.TimelineValidator = TimelineValidator;
+
+},{"./ExpressionHandler":15,"./lib/lib":28,"./lib/performance":29}],23:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Cache = void 0;
+class Cache {
+    constructor(autoCleanup = false) {
+        this.autoCleanup = autoCleanup;
+        this.cache = new Map();
+        this.clearTimeout = undefined;
+        this.timeToCueNewCleanup = false;
+        if (this.autoCleanup)
+            this.timeToCueNewCleanup = true;
+    }
+    /** Cache the result of function for a limited time */
+    cacheResult(key, fcn, limitTime) {
+        const cache = this.cache.get(key);
+        if (!cache || cache.ttl < Date.now()) {
+            const value = fcn();
+            this.cache.set(key, {
+                ttl: Date.now() + limitTime,
+                value: value,
+            });
+            if (this.timeToCueNewCleanup) {
+                this.timeToCueNewCleanup = false;
+                /* istanbul ignore next */
+                this.clearTimeout = setTimeout(() => {
+                    this.clearTimeout = undefined;
+                    this.timeToCueNewCleanup = true;
+                    this.cleanUp();
+                }, limitTime + 100);
+            }
+            return value;
+        }
+        else {
+            return cache.value;
+        }
+    }
+    /* istanbul ignore next */
+    cleanUp() {
+        const now = Date.now();
+        for (const [key, value] of this.cache.entries()) {
+            if (value.ttl < now)
+                this.cache.delete(key);
+        }
+    }
+    clear() {
+        this.cache.clear();
+        if (this.clearTimeout) {
+            clearTimeout(this.clearTimeout);
+            this.clearTimeout = undefined;
+            this.timeToCueNewCleanup = true;
+        }
+    }
+}
+exports.Cache = Cache;
+
+},{}],24:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.addCapsToResuming = exports.joinCaps = void 0;
+function joinCaps(...caps) {
+    const capMap = {};
+    for (let i = 0; i < caps.length; i++) {
+        const caps2 = caps[i];
+        if (caps2) {
+            for (let j = 0; j < caps2.length; j++) {
+                const cap2 = caps2[j];
+                capMap[cap2.id] = cap2;
+            }
+        }
+    }
+    return Object.values(capMap);
+}
+exports.joinCaps = joinCaps;
 function addCapsToResuming(instance, ...caps) {
     const capsToAdd = [];
     const joinedCaps = joinCaps(...caps);
@@ -3954,2014 +6656,447 @@ function addCapsToResuming(instance, ...caps) {
     instance.caps = joinCaps(instance.caps, capsToAdd);
 }
 exports.addCapsToResuming = addCapsToResuming;
-function joinCaps(...caps) {
-    const capMap = {};
-    for (let i = 0; i < caps.length; i++) {
-        const caps2 = caps[i];
-        if (caps2) {
-            for (let j = 0; j < caps2.length; j++) {
-                const cap2 = caps2[j];
-                capMap[cap2.id] = cap2;
-            }
-        }
-    }
-    return Object.values(capMap);
-}
-exports.joinCaps = joinCaps;
-let idCount = 0;
-/**
- * Returns a unique id
- */
-function getId() {
-    return '@' + (idCount++).toString(36);
-}
-exports.getId = getId;
-function resetId() {
-    idCount = 0;
-}
-exports.resetId = resetId;
-function setInstanceEndTime(instance, endTime) {
-    instance.originalEnd = instance.originalEnd !== undefined ? instance.originalEnd : instance.end;
-    instance.end = endTime;
-}
-exports.setInstanceEndTime = setInstanceEndTime;
-function setInstanceStartTime(instance, startTime) {
-    instance.originalStart = instance.originalStart !== undefined ? instance.originalStart : instance.start;
-    instance.start = startTime;
-}
-exports.setInstanceStartTime = setInstanceStartTime;
-function applyParentInstances(parentInstances, value) {
-    return operateOnArrays(parentInstances, value, operate);
-}
-exports.applyParentInstances = applyParentInstances;
-function operate(a, b) {
-    if (a === null || b === null)
-        return null;
-    return {
-        value: a.value + b.value,
-        references: joinReferences(a.references, b.references),
-    };
-}
-const cacheResultCache = {};
-let cleanCacheResultTimeout = null;
-/** Cache the result of function for a limited time */
-function cacheResult(name, fcn, limitTime = 1000) {
-    if (Math.random() < 0.01) {
-        if (cleanCacheResultTimeout)
-            clearTimeout(cleanCacheResultTimeout);
-        cleanCacheResultTimeout = setTimeout(() => {
-            cleanCacheResult();
-        }, 100);
-    }
-    const cache = cacheResultCache[name];
-    if (!cache || cache.ttl < Date.now()) {
-        const value = fcn();
-        cacheResultCache[name] = {
-            ttl: Date.now() + limitTime,
-            value: value,
-        };
-        return value;
-    }
-    else {
-        return cache.value;
-    }
-}
-exports.cacheResult = cacheResult;
-function cleanCacheResult() {
-    if (cleanCacheResultTimeout) {
-        clearTimeout(cleanCacheResultTimeout);
-        cleanCacheResultTimeout = null;
-    }
-    _.each(cacheResultCache, (cache, name) => {
-        if (cache.ttl < Date.now())
-            delete cacheResultCache[name];
-    });
-}
-exports.cleanCacheResult = cleanCacheResult;
 
-},{"underscore":17}],9:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getObjectReferences = exports.hashTimelineObject = exports.initializeCache = void 0;
-function initializeCache(cacheOrg, resolvedTimeline) {
-    const cache = cacheOrg;
-    if (!cache.objHashes)
-        cache.objHashes = {};
-    if (!cache.resolvedTimeline)
-        cache.resolvedTimeline = resolvedTimeline;
-    // Todo: make statistics work when using cache
-    return cache;
-}
-exports.initializeCache = initializeCache;
-/** Return a "hash-string" which changes whenever anything that affects timing of a timeline-object has changed. */
-function hashTimelineObject(obj) {
-    const thingsThatMatter = [
-        JSON.stringify(obj.enable),
-        obj.disabled + '',
-        obj.priority + '',
-        obj.resolved.parentId || '',
-        obj.resolved.isKeyframe + '',
-        obj.classes ? obj.classes.join('.') : '',
-        obj.layer + '',
-        obj.seamless + '',
-        /*
-        Note: The following properties are ignored, as they don't affect timing or resolving:
-         * id
-         * children
-         * keyframes
-         * isGroup
-         * content
-         */
-    ];
-    return thingsThatMatter.join(',');
-}
-exports.hashTimelineObject = hashTimelineObject;
-function getObjectReferences(obj) {
-    return obj.resolved.directReferences;
-}
-exports.getObjectReferences = getObjectReferences;
-
-},{}],10:[function(require,module,exports){
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.addObjectToResolvedTimeline = void 0;
-function addObjectToResolvedTimeline(resolvedTimeline, obj) {
-    resolvedTimeline.objects[obj.id] = obj;
-    if (obj.classes) {
-        for (let i = 0; i < obj.classes.length; i++) {
-            const className = obj.classes[i];
-            if (className) {
-                if (!resolvedTimeline.classes[className])
-                    resolvedTimeline.classes[className] = [];
-                resolvedTimeline.classes[className].push(obj.id);
-            }
-        }
-    }
-    if (obj.layer) {
-        if (!resolvedTimeline.layers[obj.layer])
-            resolvedTimeline.layers[obj.layer] = [];
-        resolvedTimeline.layers[obj.layer].push(obj.id);
-    }
-}
-exports.addObjectToResolvedTimeline = addObjectToResolvedTimeline;
-
-},{}],11:[function(require,module,exports){
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateExpression = exports.wrapInnerExpressions = exports.simplifyExpression = exports.interpretExpression = exports.OPERATORS = void 0;
-const _ = require("underscore");
-const lib_1 = require("../lib");
-exports.OPERATORS = ['&', '|', '+', '-', '*', '/', '%', '!'];
-const REGEXP_OPERATORS = _.map(exports.OPERATORS, (o) => '\\' + o).join('');
-function interpretExpression(expression) {
-    if ((0, lib_1.isNumeric)(expression)) {
-        return parseFloat(expression);
-    }
-    else if (_.isString(expression)) {
-        const expressionString = expression;
-        return (0, lib_1.cacheResult)(expressionString, () => {
-            const expr = expressionString.replace(new RegExp('([' + REGEXP_OPERATORS + '\\(\\)])', 'g'), ' $1 '); // Make sure there's a space between every operator & operand
-            const words = _.compact(expr.split(' '));
-            if (words.length === 0)
-                return null; // empty expression
-            // Fix special case: a + - b
-            for (let i = words.length - 2; i >= 1; i--) {
-                if ((words[i] === '-' || words[i] === '+') && wordIsOperator(exports.OPERATORS, words[i - 1])) {
-                    words[i] = words[i] + words[i + 1];
-                    words.splice(i + 1, 1);
-                }
-            }
-            const innerExpression = wrapInnerExpressions(words);
-            if (innerExpression.rest.length)
-                throw new Error('interpretExpression: syntax error: parentheses don\'t add up in "' + expr + '".');
-            if (innerExpression.inner.length % 2 !== 1)
-                throw new Error('interpretExpression: operands & operators don\'t add up: "' +
-                    innerExpression.inner.join(' ') +
-                    '".');
-            const expression = words2Expression(exports.OPERATORS, innerExpression.inner);
-            validateExpression(exports.OPERATORS, expression);
-            return expression;
-        }, 100 * 1000);
-    }
-    else {
-        return expression;
-    }
-}
-exports.interpretExpression = interpretExpression;
-/** Try to simplify an expression, this includes:
- * * Combine constant operands, using arithmetic operators
- * ...more to come?
- */
-function simplifyExpression(expr0) {
-    const expr = _.isString(expr0) ? interpretExpression(expr0) : expr0;
-    if (!expr)
-        return expr;
-    if (isExpressionObject(expr)) {
-        const l = simplifyExpression(expr.l);
-        const o = expr.o;
-        const r = simplifyExpression(expr.r);
-        if ((0, lib_1.isConstant)(l) && (0, lib_1.isConstant)(r) && _.isNumber(l) && _.isNumber(r)) {
-            // The operands can be combined:
-            return o === '+'
-                ? l + r
-                : o === '-'
-                    ? l - r
-                    : o === '*'
-                        ? l * r
-                        : o === '/'
-                            ? l / r
-                            : o === '%'
-                                ? l % r
-                                : { l, o, r };
-        }
-        return { l, o, r };
-    }
-    return expr;
-}
-exports.simplifyExpression = simplifyExpression;
-function isExpressionObject(expr) {
-    return typeof expr === 'object' && _.has(expr, 'l') && _.has(expr, 'o') && _.has(expr, 'r');
-}
-function wordIsOperator(operatorList, word) {
-    if (operatorList.indexOf(word) !== -1)
-        return true;
-    return false;
-}
-// Turns ['a', '(', 'b', 'c', ')'] into ['a', ['b', 'c']]
-// or ['a', '&', '!', 'b'] into ['a', '&', ['', '!', 'b']]
-function wrapInnerExpressions(words) {
-    for (let i = 0; i < words.length; i++) {
-        if (words[i] === '(') {
-            const tmp = wrapInnerExpressions(words.slice(i + 1));
-            // insert inner expression and remove tha
-            words[i] = tmp.inner;
-            words.splice(i + 1, 99999, ...tmp.rest);
-        }
-        else if (words[i] === ')') {
-            return {
-                inner: words.slice(0, i),
-                rest: words.slice(i + 1),
-            };
-        }
-        else if (words[i] === '!') {
-            const tmp = wrapInnerExpressions(words.slice(i + 1));
-            // insert inner expression after the '!'
-            words[i] = ['', '!'].concat(tmp.inner);
-            words.splice(i + 1, 99999, ...tmp.rest);
-        }
-    }
-    return {
-        inner: words,
-        rest: [],
-    };
-}
-exports.wrapInnerExpressions = wrapInnerExpressions;
-function words2Expression(operatorList, words) {
-    if (!words || !words.length)
-        throw new Error('words2Expression: syntax error: unbalanced expression');
-    while (words.length === 1 && _.isArray(words[0]))
-        words = words[0];
-    if (words.length === 1)
-        return words[0];
-    // Find the operator with the highest priority:
-    let operatorI = -1;
-    for (let i = 0; i < operatorList.length; i++) {
-        const operator = operatorList[i];
-        if (operatorI === -1) {
-            operatorI = words.lastIndexOf(operator);
-        }
-    }
-    if (operatorI !== -1) {
-        const l = words.slice(0, operatorI);
-        const r = words.slice(operatorI + 1);
-        const expr = {
-            l: words2Expression(operatorList, l),
-            o: words[operatorI],
-            r: words2Expression(operatorList, r),
-        };
-        return expr;
-    }
-    else
-        throw new Error('words2Expression: syntax error: operator not found: "' + words.join(' ') + '"');
-}
-/** Validates an expression. Returns true on success, throws error if not */
-function validateExpression(operatorList, expr0, breadcrumbs) {
-    if (!breadcrumbs)
-        breadcrumbs = 'ROOT';
-    if (_.isObject(expr0) && !_.isArray(expr0)) {
-        const expr = expr0;
-        if (!_.has(expr, 'l'))
-            throw new Error(`validateExpression: ${breadcrumbs}.l missing in ${JSON.stringify(expr)}`);
-        if (!_.has(expr, 'o'))
-            throw new Error(`validateExpression: ${breadcrumbs}.o missing in ${JSON.stringify(expr)}`);
-        if (!_.has(expr, 'r'))
-            throw new Error(`validateExpression: ${breadcrumbs}.r missing in ${JSON.stringify(expr)}`);
-        if (!_.isString(expr.o))
-            throw new Error(`validateExpression: ${breadcrumbs}.o not a string`);
-        if (!wordIsOperator(operatorList, expr.o))
-            throw new Error(breadcrumbs + '.o not valid: "' + expr.o + '"');
-        return (validateExpression(operatorList, expr.l, breadcrumbs + '.l') &&
-            validateExpression(operatorList, expr.r, breadcrumbs + '.r'));
-    }
-    else if (!_.isNull(expr0) && !_.isString(expr0) && !_.isNumber(expr0)) {
-        throw new Error(`validateExpression: ${breadcrumbs} is of invalid type`);
-    }
-    return true;
-}
-exports.validateExpression = validateExpression;
-
-},{"../lib":8,"underscore":17}],12:[function(require,module,exports){
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.lookupExpression = exports.resolveTimelineObj = exports.Resolver = void 0;
-const _ = require("underscore");
-const lib_1 = require("../lib");
-const validate_1 = require("./validate");
-const expression_1 = require("./expression");
-const state_1 = require("./state");
-const common_1 = require("./common");
-const cache_1 = require("./cache");
-class Resolver {
-    /**
-     * Go through all objects on the timeline and calculate all the timings.
-     * Returns a ResolvedTimeline which can be piped into Resolver.getState()
-     * @param timeline Array of timeline objects
-     * @param options Resolve options
-     */
-    static resolveTimeline(timeline, options) {
-        if (!_.isArray(timeline))
-            throw new Error('resolveTimeline: parameter timeline missing');
-        if (!options)
-            throw new Error('resolveTimeline: parameter options missing');
-        (0, validate_1.validateTimeline)(timeline, false);
-        (0, lib_1.resetId)();
-        const resolvedTimeline = {
-            options: { ...options },
-            objects: {},
-            classes: {},
-            layers: {},
-            statistics: {
-                unresolvedCount: 0,
-                resolvedCount: 0,
-                resolvedInstanceCount: 0,
-                resolvedObjectCount: 0,
-                resolvedGroupCount: 0,
-                resolvedKeyframeCount: 0,
-                resolvingCount: 0,
-            },
-        };
-        // Step 1: pre-populate resolvedTimeline with objects
-        const addToResolvedTimeline = (obj, levelDeep, parentId, isKeyframe) => {
-            if (resolvedTimeline.objects[obj.id])
-                throw Error(`All timelineObjects must be unique! (duplicate: "${obj.id}")`);
-            const o = (0, lib_1.extendMandadory)(_.clone(obj), {
-                resolved: {
-                    resolved: false,
-                    resolving: false,
-                    instances: [],
-                    levelDeep: levelDeep,
-                    isSelfReferencing: false,
-                    directReferences: [],
-                },
-            });
-            if (parentId) {
-                o.resolved.parentId = parentId;
-                o.resolved.directReferences.push(parentId);
-            }
-            if (isKeyframe)
-                o.resolved.isKeyframe = true;
-            (0, common_1.addObjectToResolvedTimeline)(resolvedTimeline, o);
-            // Add children:
-            if (obj.isGroup && obj.children) {
-                for (let i = 0; i < obj.children.length; i++) {
-                    const child = obj.children[i];
-                    addToResolvedTimeline(child, levelDeep + 1, obj.id);
-                }
-            }
-            // Add keyframes:
-            if (obj.keyframes) {
-                for (let i = 0; i < obj.keyframes.length; i++) {
-                    const keyframe = obj.keyframes[i];
-                    const kf2 = (0, lib_1.extendMandadory)(_.clone(keyframe), {
-                        layer: '',
-                    });
-                    addToResolvedTimeline(kf2, levelDeep + 1, obj.id, true);
-                }
-            }
-        };
-        for (let i = 0; i < timeline.length; i++) {
-            const obj = timeline[i];
-            addToResolvedTimeline(obj, 0);
-        }
-        // Step 2: go though and resolve the objects
-        if (options.cache) {
-            // Figure out which objects has changed since last time
-            const cache = (0, cache_1.initializeCache)(options.cache, resolvedTimeline);
-            // Go through all new objects, and determine whether they have changed:
-            const allNewObjects = {};
-            const changedReferences = {};
-            const getAllReferencesThisObjectAffects = (newObj) => {
-                const references = ['#' + newObj.id];
-                if (newObj.classes) {
-                    for (const className of newObj.classes) {
-                        references.push('.' + className);
-                    }
-                }
-                if (newObj.layer)
-                    references.push('$' + newObj.layer);
-                return references;
-            };
-            const addChangedObject = (obj) => {
-                const references = getAllReferencesThisObjectAffects(obj);
-                for (const ref of references) {
-                    changedReferences[ref] = true;
-                }
-            };
-            for (const obj of Object.values(resolvedTimeline.objects)) {
-                const oldHash = cache.objHashes[obj.id];
-                const newHash = (0, cache_1.hashTimelineObject)(obj);
-                allNewObjects[obj.id] = true;
-                if (!oldHash || oldHash !== newHash) {
-                    cache.objHashes[obj.id] = newHash;
-                    addChangedObject(obj);
-                    const oldObj = cache.resolvedTimeline.objects[obj.id];
-                    if (oldObj)
-                        addChangedObject(oldObj);
-                }
-                else {
-                    // No timing-affecting changes detected
-                    // Even though the timeline-properties hasn't changed,
-                    // the content (and other properties) might have:
-                    const oldObj = cache.resolvedTimeline.objects[obj.id];
-                    cache.resolvedTimeline.objects[obj.id] = {
-                        ...obj,
-                        resolved: oldObj.resolved,
-                    };
-                }
-            }
-            if (cache.hasOldData) {
-                // Go through all old hashes, removing the ones that doesn't exist anymore
-                for (const objId in cache.resolvedTimeline.objects) {
-                    if (!allNewObjects[objId]) {
-                        const obj = cache.resolvedTimeline.objects[objId];
-                        delete cache.objHashes[objId];
-                        addChangedObject(obj);
-                    }
-                }
-                // Invalidate objects, by gradually removing the invalidated ones from validObjects
-                // Prepare validObjects:
-                const validObjects = {};
-                for (const obj of Object.values(resolvedTimeline.objects)) {
-                    validObjects[obj.id] = obj;
-                }
-                /** All references that depend on another reference (ie objects, classs or layers): */
-                const affectReferenceMap = {};
-                for (const obj of Object.values(resolvedTimeline.objects)) {
-                    // Add everything that this object affects:
-                    const cachedObj = cache.resolvedTimeline.objects[obj.id];
-                    let affectedReferences = getAllReferencesThisObjectAffects(obj);
-                    if (cachedObj) {
-                        affectedReferences = _.uniq(affectedReferences.concat(getAllReferencesThisObjectAffects(cachedObj)));
-                    }
-                    for (let i = 0; i < affectedReferences.length; i++) {
-                        const ref = affectedReferences[i];
-                        const objRef = '#' + obj.id;
-                        if (ref !== objRef) {
-                            if (!affectReferenceMap[objRef])
-                                affectReferenceMap[objRef] = [];
-                            affectReferenceMap[objRef].push(ref);
-                        }
-                    }
-                    // Add everything that this object is affected by:
-                    if (changedReferences['#' + obj.id]) {
-                        // The object is directly said to be invalid, no need to add it to referencingObjects,
-                        // since it'll be easily invalidated anyway later
-                    }
-                    else {
-                        // Note: we only have to check for the OLD object, since if the old and the new object differs,
-                        // that would mean it'll be directly invalidated anyway.
-                        if (cachedObj) {
-                            // Fetch all references for the object from the last time it was resolved.
-                            // Note: This can be done, since _if_ the object was changed in any way since last resolve
-                            // it'll be invalidated anyway
-                            const dependOnReferences = (0, cache_1.getObjectReferences)(cachedObj);
-                            for (let i = 0; i < dependOnReferences.length; i++) {
-                                const ref = dependOnReferences[i];
-                                if (!affectReferenceMap[ref])
-                                    affectReferenceMap[ref] = [];
-                                affectReferenceMap[ref].push('#' + obj.id);
-                            }
-                        }
-                    }
-                }
-                // Invalidate all changed objects, and recursively invalidate all objects that reference those objects:
-                const handledReferences = {};
-                for (const reference of Object.keys(changedReferences)) {
-                    invalidateObjectsWithReference(handledReferences, reference, affectReferenceMap, validObjects);
-                }
-                // The objects that are left in validObjects at this point are still valid.
-                // We can reuse the old resolving for those:
-                for (const obj of Object.values(validObjects)) {
-                    if (!cache.resolvedTimeline.objects[obj.id])
-                        throw new Error(`Something went wrong: "${obj.id}" does not exist in cache.resolvedTimeline.objects`);
-                    resolvedTimeline.objects[obj.id] = cache.resolvedTimeline.objects[obj.id];
-                }
-            }
-            for (const obj of Object.values(resolvedTimeline.objects)) {
-                resolveTimelineObj(resolvedTimeline, obj);
-            }
-            // Save for next time:
-            cache.resolvedTimeline = resolvedTimeline;
-            cache.hasOldData = true;
-            // Update statistics, since that's not accurate after having used the cache:
-            resolvedTimeline.statistics.unresolvedCount = 0;
-            resolvedTimeline.statistics.resolvedCount = 0;
-            resolvedTimeline.statistics.resolvedInstanceCount = 0;
-            resolvedTimeline.statistics.resolvedObjectCount = 0;
-            resolvedTimeline.statistics.resolvedGroupCount = 0;
-            resolvedTimeline.statistics.resolvedKeyframeCount = 0;
-            for (const obj of Object.values(resolvedTimeline.objects)) {
-                updateStatistics(resolvedTimeline, obj);
-            }
-            return resolvedTimeline;
-        }
-        else {
-            // If there are no cache provided, just resolve all objects:
-            for (const obj of Object.values(resolvedTimeline.objects)) {
-                resolveTimelineObj(resolvedTimeline, obj);
-            }
-            return resolvedTimeline;
-        }
-    }
-    /** Calculate the state for all points in time.  */
-    static resolveAllStates(resolvedTimeline, cache) {
-        return (0, state_1.resolveStates)(resolvedTimeline, cache);
-    }
-    /**
-     * Calculate the state at a given point in time.
-     * Using a ResolvedTimeline calculated by Resolver.resolveTimeline() or
-     * a ResolvedStates calculated by Resolver.resolveAllStates()
-     * @param resolved ResolvedTimeline calculated by Resolver.resolveTimeline.
-     * @param time The point in time where to calculate the state
-     * @param eventLimit (Optional) Limits the number of returned upcoming events.
-     */
-    static getState(resolved, time, eventLimit) {
-        return (0, state_1.getState)(resolved, time, eventLimit);
-    }
-}
-exports.Resolver = Resolver;
-function resolveTimelineObj(resolvedTimeline, obj) {
-    if (obj.resolved.resolved)
-        return;
-    if (obj.resolved.resolving)
-        throw new Error(`Circular dependency when trying to resolve "${obj.id}"`);
-    obj.resolved.resolving = true;
-    resolvedTimeline.statistics.resolvingCount++;
-    let instances = [];
-    let directReferences = [];
-    const enables = _.isArray(obj.enable) ? obj.enable : [obj.enable];
-    for (let i = 0; i < enables.length; i++) {
-        const enable = enables[i];
-        let newInstances = [];
-        const repeatingExpr = enable.repeating !== undefined ? (0, expression_1.interpretExpression)(enable.repeating) : null;
-        const lookedRepeating = lookupExpression(resolvedTimeline, obj, repeatingExpr, 'duration');
-        const lookedupRepeating = lookedRepeating.instances;
-        directReferences = directReferences.concat(lookedRepeating.allReferences);
-        if (_.isArray(lookedupRepeating)) {
-            throw new Error(`lookupExpression should never return an array for .duration lookup`); // perhaps tmp? maybe revisit this at some point
-        }
-        let start = enable.while !== undefined ? enable.while : enable.start !== undefined ? enable.start : '';
-        if (enable.while + '' === '1') {
-            start = 'true';
-        }
-        else if (enable.while + '' === '0') {
-            start = 'false';
-        }
-        const startExpr = (0, expression_1.simplifyExpression)(start);
-        let parentInstances = null;
-        let hasParent = false;
-        let startRefersToParent = false;
-        if (obj.resolved.parentId) {
-            hasParent = true;
-            const lookup = lookupExpression(resolvedTimeline, obj, (0, expression_1.interpretExpression)(`#${obj.resolved.parentId}`), 'start');
-            parentInstances = lookup.instances; // a start-reference will always return an array, or null
-            directReferences = directReferences.concat(lookup.allReferences);
-            if ((0, lib_1.isConstant)(startExpr)) {
-                // Only use parent if the expression resolves to a number (ie doesn't contain any references)
-                startRefersToParent = true;
-            }
-        }
-        const lookupStart = lookupExpression(resolvedTimeline, obj, startExpr, 'start');
-        let lookedupStarts = lookupStart.instances;
-        directReferences = directReferences.concat(lookupStart.allReferences);
-        if (startRefersToParent) {
-            lookedupStarts = (0, lib_1.applyParentInstances)(parentInstances, lookedupStarts);
-        }
-        if (enable.while) {
-            if (_.isArray(lookedupStarts)) {
-                newInstances = lookedupStarts;
-            }
-            else if (lookedupStarts !== null) {
-                newInstances = [
-                    {
-                        id: (0, lib_1.getId)(),
-                        start: lookedupStarts.value,
-                        end: null,
-                        references: lookedupStarts.references,
-                    },
-                ];
-            }
-        }
-        else {
-            const events = [];
-            let iStart = 0;
-            let iEnd = 0;
-            if (_.isArray(lookedupStarts)) {
-                for (let i = 0; i < lookedupStarts.length; i++) {
-                    const instance = lookedupStarts[i];
-                    events.push({
-                        time: instance.start,
-                        value: true,
-                        data: { instance: instance, id: obj.id + '_' + iStart++ },
-                        references: instance.references,
-                    });
-                }
-            }
-            else if (lookedupStarts !== null) {
-                events.push({
-                    time: lookedupStarts.value,
-                    value: true,
-                    data: {
-                        instance: {
-                            id: (0, lib_1.getId)(),
-                            start: lookedupStarts.value,
-                            end: null,
-                            references: lookedupStarts.references,
-                        },
-                        id: obj.id + '_' + iStart++,
-                    },
-                    references: lookedupStarts.references,
-                });
-            }
-            if (enable.end !== undefined) {
-                const endExpr = (0, expression_1.interpretExpression)(enable.end);
-                let endRefersToParent = false;
-                if (obj.resolved.parentId) {
-                    if ((0, lib_1.isConstant)(endExpr)) {
-                        // Only use parent if the expression resolves to a number (ie doesn't contain any references)
-                        endRefersToParent = true;
-                    }
-                }
-                // lookedupEnds will contain an inverted list of instances. Therefore .start means an end
-                const lookupEnd = endExpr ? lookupExpression(resolvedTimeline, obj, endExpr, 'end') : null;
-                let lookedupEnds = lookupEnd ? lookupEnd.instances : null;
-                if (lookupEnd)
-                    directReferences = directReferences.concat(lookupEnd.allReferences);
-                if (endRefersToParent) {
-                    lookedupEnds = (0, lib_1.applyParentInstances)(parentInstances, lookedupEnds);
-                }
-                if (_.isArray(lookedupEnds)) {
-                    for (let i = 0; i < lookedupEnds.length; i++) {
-                        const instance = lookedupEnds[i];
-                        events.push({
-                            time: instance.start,
-                            value: false,
-                            data: { instance: instance, id: obj.id + '_' + iEnd++ },
-                            references: instance.references,
-                        });
-                    }
-                }
-                else if (lookedupEnds !== null) {
-                    events.push({
-                        time: lookedupEnds.value,
-                        value: false,
-                        data: {
-                            instance: {
-                                id: (0, lib_1.getId)(),
-                                start: lookedupEnds.value,
-                                end: null,
-                                references: lookedupEnds.references,
-                            },
-                            id: obj.id + '_' + iEnd++,
-                        },
-                        references: lookedupEnds.references,
-                    });
-                }
-            }
-            else if (enable.duration !== undefined) {
-                const durationExpr = (0, expression_1.interpretExpression)(enable.duration);
-                const lookupDuration = lookupExpression(resolvedTimeline, obj, durationExpr, 'duration');
-                let lookedupDuration = lookupDuration.instances;
-                directReferences = directReferences.concat(lookupDuration.allReferences);
-                if (_.isArray(lookedupDuration) && lookedupDuration.length === 1) {
-                    lookedupDuration = {
-                        value: lookedupDuration[0].start,
-                        references: lookedupDuration[0].references,
-                    };
-                }
-                if (_.isArray(lookedupDuration) && !lookedupDuration.length)
-                    lookedupDuration = null;
-                if (_.isArray(lookedupDuration)) {
-                    throw new Error(`lookupExpression should never return an array for .duration lookup`); // perhaps tmp? maybe revisit this at some point
-                }
-                else if (lookedupDuration !== null) {
-                    if (lookedupRepeating !== null && lookedupDuration.value > lookedupRepeating.value)
-                        lookedupDuration.value = lookedupRepeating.value;
-                    const tmpLookedupDuration = lookedupDuration; // cast type
-                    for (let i = 0; i < events.length; i++) {
-                        const e = events[i];
-                        if (e.value) {
-                            const time = e.time + tmpLookedupDuration.value;
-                            const references = (0, lib_1.joinReferences)(e.references, tmpLookedupDuration.references);
-                            events.push({
-                                time: time,
-                                value: false,
-                                data: {
-                                    id: e.data.id,
-                                    instance: {
-                                        id: e.data.instance.id,
-                                        start: time,
-                                        end: null,
-                                        references: references,
-                                    },
-                                },
-                                references: references,
-                            });
-                        }
-                    }
-                }
-            }
-            newInstances = (0, lib_1.convertEventsToInstances)(events, false);
-        }
-        if (hasParent) {
-            // figure out what parent-instance the instances are tied to, and cap them
-            const cappedInstances = [];
-            for (let i = 0; i < newInstances.length; i++) {
-                const instance = newInstances[i];
-                if (parentInstances) {
-                    const referredParentInstance = _.find(parentInstances, (parentInstance) => {
-                        return instance.references.indexOf(parentInstance.id) !== -1;
-                    });
-                    if (referredParentInstance) {
-                        // If the child refers to its parent, there should be one specific instance to cap into
-                        const cappedInstance = (0, lib_1.capInstances)([instance], [referredParentInstance])[0];
-                        if (cappedInstance) {
-                            if (!cappedInstance.caps)
-                                cappedInstance.caps = [];
-                            cappedInstance.caps.push({
-                                id: referredParentInstance.id,
-                                start: referredParentInstance.start,
-                                end: referredParentInstance.end,
-                            });
-                            cappedInstances.push(cappedInstance);
-                        }
-                    }
-                    else {
-                        // If the child doesn't refer to its parent, it should be capped within all of its parent instances
-                        for (let i = 0; i < parentInstances.length; i++) {
-                            const parentInstance = parentInstances[i];
-                            const cappedInstance = (0, lib_1.capInstances)([instance], [parentInstance])[0];
-                            if (cappedInstance) {
-                                if (parentInstance) {
-                                    if (!cappedInstance.caps)
-                                        cappedInstance.caps = [];
-                                    cappedInstance.caps.push({
-                                        id: parentInstance.id,
-                                        start: parentInstance.start,
-                                        end: parentInstance.end,
-                                    });
-                                }
-                                cappedInstances.push(cappedInstance);
-                            }
-                        }
-                    }
-                }
-            }
-            newInstances = cappedInstances;
-        }
-        newInstances = (0, lib_1.applyRepeatingInstances)(newInstances, lookedupRepeating, resolvedTimeline.options);
-        instances = instances.concat(newInstances);
-    }
-    // Make sure the instance ids are unique:
-    const ids = {};
-    for (const instance of instances) {
-        if (ids[instance.id]) {
-            instance.id = `${instance.id}_${(0, lib_1.getId)()}`;
-        }
-        ids[instance.id] = true;
-    }
-    if (obj.seamless && instances.length > 1) {
-        instances = (0, lib_1.cleanInstances)(instances, true, false);
-    }
-    obj.resolved.resolved = true;
-    obj.resolved.resolving = false;
-    obj.resolved.instances = instances;
-    obj.resolved.directReferences = directReferences;
-    updateStatistics(resolvedTimeline, obj);
-}
-exports.resolveTimelineObj = resolveTimelineObj;
-function updateStatistics(resolvedTimeline, obj) {
-    if (obj.resolved.instances.length) {
-        resolvedTimeline.statistics.resolvedInstanceCount += obj.resolved.instances.length;
-        resolvedTimeline.statistics.resolvedCount += 1;
-        if (obj.isGroup) {
-            resolvedTimeline.statistics.resolvedGroupCount += 1;
-        }
-        if (obj.resolved.isKeyframe) {
-            resolvedTimeline.statistics.resolvedKeyframeCount += 1;
-        }
-        else {
-            resolvedTimeline.statistics.resolvedObjectCount += 1;
-        }
-    }
-    else {
-        resolvedTimeline.statistics.unresolvedCount += 1;
-    }
-}
-/** Invalidate all changed objects, and recursively invalidate all objects that reference those objects */
-function invalidateObjectsWithReference(handledReferences, reference, affectReferenceMap, validObjects) {
-    if (handledReferences[reference])
-        return; // to avoid infinite loops
-    handledReferences[reference] = true;
-    if (reference[0] === '#') {
-        // an id
-        const objId = reference.slice(1);
-        if (validObjects[objId]) {
-            delete validObjects[objId];
-        }
-    }
-    // Invalidate all objects that depend on any of the references that this reference affects:
-    const affectedReferences = affectReferenceMap[reference];
-    if (affectedReferences) {
-        for (let i = 0; i < affectedReferences.length; i++) {
-            const referencingReference = affectedReferences[i];
-            invalidateObjectsWithReference(handledReferences, referencingReference, affectReferenceMap, validObjects);
-        }
-    }
-}
-/**
- * Look up a reference on the timeline
- * Return values:
- * Array<TimelineObjectInstance>: Instances on the timeline where the reference expression is true
- * ValueWithReference: A singular value which can be combined arithmetically with Instances
- * null: Means "something is invalid", an null-value will always return null when combined with other values
- *
- * @param resolvedTimeline
- * @param obj
- * @param expr
- * @param context
- */
-function lookupExpression(resolvedTimeline, obj, expr, context) {
-    if (expr === null)
-        return { instances: null, allReferences: [] };
-    if (_.isString(expr) && (0, lib_1.isNumeric)(expr)) {
-        return {
-            instances: {
-                value: parseFloat(expr),
-                references: [],
-            },
-            allReferences: [],
-        };
-    }
-    else if (_.isNumber(expr)) {
-        return {
-            instances: {
-                value: expr,
-                references: [],
-            },
-            allReferences: [],
-        };
-    }
-    else if (_.isString(expr)) {
-        expr = expr.trim();
-        if ((0, lib_1.isConstant)(expr)) {
-            if (expr.match(/^true$/i)) {
-                return {
-                    instances: {
-                        value: 0,
-                        references: [],
-                    },
-                    allReferences: [],
-                };
-            }
-            else if (expr.match(/^false$/i)) {
-                return {
-                    instances: [],
-                    allReferences: [],
-                };
-            }
-        }
-        // Look up string
-        let invert = false;
-        let ignoreFirstIfZero = false;
-        let referencedObjs = [];
-        let ref = context;
-        let rest = '';
-        let objIdsToReference = [];
-        const allReferences = [];
-        let referenceIsOk = false;
-        // Match id, example: "#objectId.start"
-        const m = expr.match(/^\W*#([^.]+)(.*)/);
-        if (m) {
-            const id = m[1];
-            rest = m[2];
-            referenceIsOk = true;
-            objIdsToReference = [id];
-            allReferences.push('#' + id);
-        }
-        else {
-            // Match class, example: ".className.start"
-            const m = expr.match(/^\W*\.([^.]+)(.*)/);
-            if (m) {
-                const className = m[1];
-                rest = m[2];
-                referenceIsOk = true;
-                objIdsToReference = resolvedTimeline.classes[className] || [];
-                allReferences.push('.' + className);
-            }
-            else {
-                // Match layer, example: "$layer"
-                const m = expr.match(/^\W*\$([^.]+)(.*)/);
-                if (m) {
-                    const layer = m[1];
-                    rest = m[2];
-                    referenceIsOk = true;
-                    objIdsToReference = resolvedTimeline.layers[layer] || [];
-                    allReferences.push('$' + layer);
-                }
-            }
-        }
-        for (let i = 0; i < objIdsToReference.length; i++) {
-            const refObjId = objIdsToReference[i];
-            if (refObjId !== obj.id) {
-                const refObj = resolvedTimeline.objects[refObjId];
-                if (refObj) {
-                    referencedObjs.push(refObj);
-                }
-            }
-            else {
-                // Looks like the object is referencing itself!
-                if (obj.resolved.resolving) {
-                    obj.resolved.isSelfReferencing = true;
-                }
-            }
-        }
-        if (!referenceIsOk) {
-            return { instances: null, allReferences: [] };
-        }
-        if (obj.resolved.isSelfReferencing) {
-            // Exclude any self-referencing objects:
-            referencedObjs = _.filter(referencedObjs, (refObj) => {
-                return !refObj.resolved.isSelfReferencing;
-            });
-        }
-        if (referencedObjs.length) {
-            if (rest.match(/start/))
-                ref = 'start';
-            if (rest.match(/end/))
-                ref = 'end';
-            if (rest.match(/duration/))
-                ref = 'duration';
-            if (ref === 'duration') {
-                // Duration refers to the first object on the resolved timeline
-                const instanceDurations = [];
-                for (let i = 0; i < referencedObjs.length; i++) {
-                    const referencedObj = referencedObjs[i];
-                    resolveTimelineObj(resolvedTimeline, referencedObj);
-                    if (referencedObj.resolved.resolved) {
-                        if (obj.resolved.isSelfReferencing && referencedObj.resolved.isSelfReferencing) {
-                            // If the querying object is self-referencing, exclude any other self-referencing objects,
-                            // ignore the object
-                        }
-                        else {
-                            const firstInstance = _.first(referencedObj.resolved.instances);
-                            if (firstInstance) {
-                                const duration = firstInstance.end !== null ? firstInstance.end - firstInstance.start : null;
-                                if (duration !== null) {
-                                    instanceDurations.push({
-                                        value: duration,
-                                        references: (0, lib_1.joinReferences)(referencedObj.id, firstInstance.references),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                let firstDuration = null;
-                for (let i = 0; i < instanceDurations.length; i++) {
-                    const d = instanceDurations[i];
-                    if (firstDuration === null || d.value < firstDuration.value)
-                        firstDuration = d;
-                }
-                return { instances: firstDuration, allReferences: allReferences };
-            }
-            else {
-                let returnInstances = [];
-                if (ref === 'start') {
-                    // nothing
-                }
-                else if (ref === 'end') {
-                    invert = !invert;
-                    ignoreFirstIfZero = true;
-                }
-                else
-                    throw Error(`Unknown ref: "${ref}"`);
-                for (let i = 0; i < referencedObjs.length; i++) {
-                    const referencedObj = referencedObjs[i];
-                    resolveTimelineObj(resolvedTimeline, referencedObj);
-                    if (referencedObj.resolved.resolved) {
-                        if (obj.resolved.isSelfReferencing && referencedObj.resolved.isSelfReferencing) {
-                            // If the querying object is self-referencing, exclude any other self-referencing objects,
-                            // ignore the object
-                        }
-                        else {
-                            returnInstances = returnInstances.concat(referencedObj.resolved.instances);
-                        }
-                    }
-                }
-                if (returnInstances.length) {
-                    if (invert) {
-                        returnInstances = (0, lib_1.invertInstances)(returnInstances);
-                    }
-                    else {
-                        returnInstances = (0, lib_1.cleanInstances)(returnInstances, true, true);
-                    }
-                    if (ignoreFirstIfZero) {
-                        const first = _.first(returnInstances);
-                        if (first && first.start === 0) {
-                            returnInstances.splice(0, 1);
-                        }
-                    }
-                    return { instances: returnInstances, allReferences: allReferences };
-                }
-                else {
-                    return { instances: [], allReferences: allReferences };
-                }
-            }
-        }
-        else {
-            return { instances: [], allReferences: allReferences };
-        }
-    }
-    else {
-        if (expr) {
-            const l = lookupExpression(resolvedTimeline, obj, expr.l, context);
-            const r = lookupExpression(resolvedTimeline, obj, expr.r, context);
-            const lookupExpr = {
-                l: l.instances,
-                o: expr.o,
-                r: r.instances,
-            };
-            const allReferences = l.allReferences.concat(r.allReferences);
-            if (lookupExpr.o === '!') {
-                // Discard l, invert and return r:
-                if (lookupExpr.r && _.isArray(lookupExpr.r)) {
-                    return {
-                        instances: (0, lib_1.invertInstances)(lookupExpr.r),
-                        allReferences: allReferences,
-                    };
-                }
-                else {
-                    // We can't invert a value
-                    return {
-                        instances: lookupExpr.r,
-                        allReferences: allReferences,
-                    };
-                }
-            }
-            else {
-                if (_.isNull(lookupExpr.l) || _.isNull(lookupExpr.r)) {
-                    return { instances: null, allReferences: allReferences };
-                }
-                if (lookupExpr.o === '&' || lookupExpr.o === '|') {
-                    let events = [];
-                    const addEvents = (instances, left) => {
-                        for (let i = 0; i < instances.length; i++) {
-                            const instance = instances[i];
-                            if (instance.start !== instance.end) {
-                                // event doesn't actually exist...
-                                events.push({
-                                    left: left,
-                                    time: instance.start,
-                                    value: true,
-                                    references: [],
-                                    data: true,
-                                    instance: instance,
-                                });
-                                if (instance.end !== null) {
-                                    events.push({
-                                        left: left,
-                                        time: instance.end,
-                                        value: false,
-                                        references: [],
-                                        data: false,
-                                        instance: instance,
-                                    });
-                                }
-                            }
-                        }
-                    };
-                    if (_.isArray(lookupExpr.l))
-                        addEvents(lookupExpr.l, true);
-                    if (_.isArray(lookupExpr.r))
-                        addEvents(lookupExpr.r, false);
-                    events = (0, lib_1.sortEvents)(events);
-                    const calcResult = lookupExpr.o === '&'
-                        ? (left, right) => !!(left && right)
-                        : lookupExpr.o === '|'
-                            ? (left, right) => !!(left || right)
-                            : () => {
-                                return false;
-                            };
-                    let leftValue = (0, lib_1.isReference)(lookupExpr.l) ? !!lookupExpr.l.value : false;
-                    let rightValue = (0, lib_1.isReference)(lookupExpr.r) ? !!lookupExpr.r.value : false;
-                    let leftInstance = null;
-                    let rightInstance = null;
-                    let resultValue = calcResult(leftValue, rightValue);
-                    const instances = [];
-                    const updateInstance = (time, value, references, caps) => {
-                        if (value) {
-                            instances.push({
-                                id: (0, lib_1.getId)(),
-                                start: time,
-                                end: null,
-                                references: references,
-                                caps: caps,
-                            });
-                        }
-                        else {
-                            const last = _.last(instances);
-                            if (last) {
-                                last.end = time;
-                                // don't update reference on end
-                            }
-                        }
-                    };
-                    updateInstance(0, resultValue, (0, lib_1.joinReferences)((0, lib_1.isReference)(lookupExpr.l) ? lookupExpr.l.references : [], (0, lib_1.isReference)(lookupExpr.r) ? lookupExpr.r.references : []), []);
-                    for (let i = 0; i < events.length; i++) {
-                        const e = events[i];
-                        const next = events[i + 1];
-                        if (e.left) {
-                            leftValue = e.value;
-                            leftInstance = e.instance;
-                        }
-                        else {
-                            rightValue = e.value;
-                            rightInstance = e.instance;
-                        }
-                        if (!next || next.time !== e.time) {
-                            const newResultValue = calcResult(leftValue, rightValue);
-                            const resultCaps = (leftInstance ? leftInstance.caps || [] : []).concat(rightInstance ? rightInstance.caps || [] : []);
-                            if (newResultValue !== resultValue) {
-                                updateInstance(e.time, newResultValue, (0, lib_1.joinReferences)(leftInstance ? leftInstance.references : [], rightInstance ? rightInstance.references : []), resultCaps);
-                                resultValue = newResultValue;
-                            }
-                        }
-                    }
-                    return { instances: instances, allReferences: allReferences };
-                }
-                else {
-                    const operateInner = lookupExpr.o === '+'
-                        ? (a, b) => {
-                            return {
-                                value: a.value + b.value,
-                                references: (0, lib_1.joinReferences)(a.references, b.references),
-                            };
-                        }
-                        : lookupExpr.o === '-'
-                            ? (a, b) => {
-                                return {
-                                    value: a.value - b.value,
-                                    references: (0, lib_1.joinReferences)(a.references, b.references),
-                                };
-                            }
-                            : lookupExpr.o === '*'
-                                ? (a, b) => {
-                                    return {
-                                        value: a.value * b.value,
-                                        references: (0, lib_1.joinReferences)(a.references, b.references),
-                                    };
-                                }
-                                : lookupExpr.o === '/'
-                                    ? (a, b) => {
-                                        return {
-                                            value: a.value / b.value,
-                                            references: (0, lib_1.joinReferences)(a.references, b.references),
-                                        };
-                                    }
-                                    : lookupExpr.o === '%'
-                                        ? (a, b) => {
-                                            return {
-                                                value: a.value % b.value,
-                                                references: (0, lib_1.joinReferences)(a.references, b.references),
-                                            };
-                                        }
-                                        : () => null;
-                    const operate = (a, b) => {
-                        if (a === null || b === null)
-                            return null;
-                        return operateInner(a, b);
-                    };
-                    const result = (0, lib_1.operateOnArrays)(lookupExpr.l, lookupExpr.r, operate);
-                    return { instances: result, allReferences: allReferences };
-                }
-            }
-        }
-    }
-    return { instances: null, allReferences: [] };
-}
-exports.lookupExpression = lookupExpression;
-
-},{"../lib":8,"./cache":9,"./common":10,"./expression":11,"./state":13,"./validate":14,"underscore":17}],13:[function(require,module,exports){
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.applyKeyframeContent = exports.resolveStates = exports.getState = void 0;
-const _ = require("underscore");
-const common_1 = require("./common");
-const enums_1 = require("../api/enums");
-const lib_1 = require("../lib");
-function getState(resolved, time, eventLimit = 0) {
-    const resolvedStates = isResolvedStates(resolved) ? resolved : resolveStates(resolved);
-    const state = {
-        time: time,
-        layers: {},
-        nextEvents: _.filter(resolvedStates.nextEvents, (e) => e.time > time),
-    };
-    if (eventLimit)
-        state.nextEvents = state.nextEvents.slice(0, eventLimit);
-    const layerKeys = Object.keys(resolvedStates.layers);
-    for (let i = 0; i < layerKeys.length; i++) {
-        const layer = layerKeys[i];
-        const o = getStateAtTime(resolvedStates.state, layer, time);
-        if (o)
-            state.layers[layer] = o;
-    }
-    return state;
-}
-exports.getState = getState;
-function resolveStates(resolved, cache) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
-    const resolvedStates = {
-        options: resolved.options,
-        statistics: resolved.statistics,
-        // These will be re-created during the state-resolving:
-        objects: {},
-        classes: {},
-        layers: {},
-        state: {},
-        nextEvents: [],
-    };
-    if (cache && resolved.statistics.resolvingCount === 0 && cache.resolvedStates) {
-        // Nothing has changed since last time, just return the states right away:
-        return cache.resolvedStates;
-    }
-    const resolvedObjects = _.values(resolved.objects);
-    // Sort to make sure parent groups are evaluated before their children:
-    resolvedObjects.sort((a, b) => {
-        if ((a.resolved.levelDeep || 0) > (b.resolved.levelDeep || 0))
-            return 1;
-        if ((a.resolved.levelDeep || 0) < (b.resolved.levelDeep || 0))
-            return -1;
-        if (a.id > b.id)
-            return 1;
-        if (a.id < b.id)
-            return -1;
-        return 0;
-    });
-    // Step 1: Collect all points-of-interest (which points in time we want to evaluate)
-    // and which instances that are interesting
-    const pointsInTime = {};
-    const addPointInTime = (time, checkId, order, obj, instance) => {
-        // Note on order: Ending events come before starting events
-        if (!pointsInTime[time + ''])
-            pointsInTime[time + ''] = [];
-        pointsInTime[time + ''].push({ obj, instance, checkId, order });
-    };
-    for (const obj of resolvedObjects) {
-        if (!obj.disabled && obj.resolved.resolved) {
-            if (!obj.resolved.isKeyframe) {
-                const parentTimes = getTimesFromParents(resolved, obj);
-                if (obj.layer) {
-                    // if layer is empty, don't put in state
-                    for (const instance of obj.resolved.instances) {
-                        const timeEvents = [];
-                        timeEvents.push({ time: instance.start, enable: true });
-                        if (instance.end)
-                            timeEvents.push({ time: instance.end, enable: false });
-                        // Also include times from parents, as they could affect the state of this instance:
-                        for (let i = 0; i < parentTimes.length; i++) {
-                            const parentTime = parentTimes[i];
-                            if (parentTime &&
-                                parentTime.time > (instance.start || 0) &&
-                                parentTime.time < ((_a = instance.end) !== null && _a !== void 0 ? _a : Infinity)) {
-                                timeEvents.push(parentTime);
-                            }
-                        }
-                        // Save a reference to this instance on all points in time that could affect it:
-                        for (let i = 0; i < timeEvents.length; i++) {
-                            const timeEvent = timeEvents[i];
-                            if (timeEvent.enable) {
-                                addPointInTime(timeEvent.time, 'start', 1, obj, instance);
-                            }
-                            else {
-                                addPointInTime(timeEvent.time, 'end', 0, obj, instance);
-                            }
-                        }
-                    }
-                }
-            }
-            else if (obj.resolved.isKeyframe && obj.resolved.parentId) {
-                const keyframe = obj;
-                // Also add keyframes to pointsInTime:
-                for (const instance of keyframe.resolved.instances) {
-                    // Keyframe start time
-                    addPointInTime(instance.start, 'start', 1, keyframe, instance);
-                    // Keyframe end time
-                    if (instance.end !== null) {
-                        addPointInTime(instance.end, 'end', 0, keyframe, instance);
-                    }
-                }
-            }
-        }
-    }
-    // Step 2: Resolve the state for the points-of-interest
-    // This is done by sweeping the points-of-interest chronologically,
-    // determining the state for every point in time by adding & removing objects from aspiringInstances
-    // Then sorting it to determine who takes precedence
-    const eventObjectTimes = {};
-    const currentState = {};
-    const activeObjIds = {};
-    const activeKeyframes = {};
-    const activeKeyframesChecked = {};
-    /** The objects in aspiringInstances  */
-    const aspiringInstances = {};
-    const keyframeEvents = [];
-    const times = Object.keys(pointsInTime)
-        .map((time) => parseFloat(time))
-        // Sort chronologically:
-        .sort((a, b) => a - b);
-    // Iterate through all points-of-interest times:
-    for (let i = 0; i < times.length; i++) {
-        const time = times[i];
-        const instancesToCheck = pointsInTime[time];
-        const checkedObjectsThisTime = {};
-        instancesToCheck.sort((a, b) => {
-            if (a.obj.resolved && b.obj.resolved) {
-                // Keyframes comes first:
-                if (a.obj.resolved.isKeyframe && !b.obj.resolved.isKeyframe)
-                    return -1;
-                if (!a.obj.resolved.isKeyframe && b.obj.resolved.isKeyframe)
-                    return 1;
-                if (a.order > b.order)
-                    return 1;
-                if (a.order < b.order)
-                    return -1;
-                // Deeper objects (children in groups) comes later, we want to check the parent groups first:
-                if ((a.obj.resolved.levelDeep || 0) > (b.obj.resolved.levelDeep || 0))
-                    return 1;
-                if ((a.obj.resolved.levelDeep || 0) < (b.obj.resolved.levelDeep || 0))
-                    return -1;
-            }
-            return 0;
-        });
-        for (let j = 0; j < instancesToCheck.length; j++) {
-            const o = instancesToCheck[j];
-            const obj = o.obj;
-            const instance = o.instance;
-            let toBeEnabled = (instance.start || 0) <= time && ((_b = instance.end) !== null && _b !== void 0 ? _b : Infinity) > time;
-            const layer = obj.layer + '';
-            const identifier = obj.id + '_' + instance.id + '_' + o.checkId;
-            if (!checkedObjectsThisTime[identifier]) {
-                // Only check each object and event-type once for every point in time
-                checkedObjectsThisTime[identifier] = true;
-                if (!obj.resolved.isKeyframe) {
-                    // If object has a parent, only set if parent is on a layer (if layer is set for parent)
-                    if (toBeEnabled && obj.resolved.parentId) {
-                        const parentObj = obj.resolved.parentId ? resolved.objects[obj.resolved.parentId] : null;
-                        toBeEnabled = !!(parentObj && (!parentObj.layer || activeObjIds[parentObj.id]));
-                    }
-                    if (!aspiringInstances[obj.layer])
-                        aspiringInstances[obj.layer] = [];
-                    if (toBeEnabled) {
-                        // The instance wants to be enabled (is starting)
-                        // Add to aspiringInstances:
-                        aspiringInstances[obj.layer].push({ obj, instance });
-                    }
-                    else {
-                        // The instance doesn't want to be enabled (is ending)
-                        // Remove from aspiringInstances:
-                        aspiringInstances[layer] = _.reject(aspiringInstances[layer] || [], (o) => o.obj.id === obj.id);
-                    }
-                    // Evaluate the layer to determine who has the throne:
-                    aspiringInstances[layer].sort((a, b) => {
-                        // Determine who takes precedence:
-                        // First, sort using priority
-                        if ((a.obj.priority || 0) < (b.obj.priority || 0))
-                            return 1;
-                        if ((a.obj.priority || 0) > (b.obj.priority || 0))
-                            return -1;
-                        // Then, sort using the start time
-                        if ((a.instance.start || 0) < (b.instance.start || 0))
-                            return 1;
-                        if ((a.instance.start || 0) > (b.instance.start || 0))
-                            return -1;
-                        // Last resort: sort using id:
-                        if (a.obj.id > b.obj.id)
-                            return 1;
-                        if (a.obj.id < b.obj.id)
-                            return -1;
-                        return 0;
-                    });
-                    // Now, the one on top has the throne
-                    // Update current state:
-                    const currentOnTopOfLayer = aspiringInstances[layer][0];
-                    const prevObj = currentState[layer];
-                    const replaceOldObj = currentOnTopOfLayer &&
-                        (!prevObj ||
-                            prevObj.id !== currentOnTopOfLayer.obj.id ||
-                            prevObj.instance.id !== currentOnTopOfLayer.instance.id);
-                    const removeOldObj = !currentOnTopOfLayer && prevObj;
-                    if (replaceOldObj || removeOldObj) {
-                        if (prevObj) {
-                            // Cap the old instance, so it'll end at this point in time:
-                            (0, lib_1.setInstanceEndTime)(prevObj.instance, time);
-                            // Update activeObjIds:
-                            delete activeObjIds[prevObj.id];
-                            // Add to nextEvents:
-                            resolvedStates.nextEvents.push({
-                                type: enums_1.EventType.END,
-                                time: time,
-                                objId: prevObj.id,
-                            });
-                            eventObjectTimes[instance.end + ''] = enums_1.EventType.END;
-                        }
-                    }
-                    let changed = false;
-                    if (replaceOldObj) {
-                        // Set the new object to State
-                        // Construct a new object clone:
-                        let newObj;
-                        if (resolvedStates.objects[currentOnTopOfLayer.obj.id]) {
-                            // Use the already existing one
-                            newObj = resolvedStates.objects[currentOnTopOfLayer.obj.id];
-                        }
-                        else {
-                            newObj = _.clone(currentOnTopOfLayer.obj);
-                            newObj.content = JSON.parse(JSON.stringify(newObj.content));
-                            newObj.resolved = {
-                                ...(newObj.resolved || {}),
-                                instances: [],
-                            };
-                            (0, common_1.addObjectToResolvedTimeline)(resolvedStates, newObj);
-                        }
-                        const newInstance = {
-                            ...currentOnTopOfLayer.instance,
-                            // We're setting new start & end times so they match up with the state:
-                            start: time,
-                            end: null,
-                            fromInstanceId: currentOnTopOfLayer.instance.id,
-                            originalEnd: currentOnTopOfLayer.instance.originalEnd !== undefined
-                                ? currentOnTopOfLayer.instance.originalEnd
-                                : currentOnTopOfLayer.instance.end,
-                            originalStart: currentOnTopOfLayer.instance.originalStart !== undefined
-                                ? currentOnTopOfLayer.instance.originalStart
-                                : currentOnTopOfLayer.instance.start,
-                        };
-                        // Make the instance id unique:
-                        for (let i = 0; i < newObj.resolved.instances.length; i++) {
-                            if (newObj.resolved.instances[i].id === newInstance.id) {
-                                newInstance.id = newInstance.id + '_$' + newObj.resolved.instances.length;
-                            }
-                        }
-                        newObj.resolved.instances.push(newInstance);
-                        const newObjInstance = {
-                            ...newObj,
-                            instance: newInstance,
-                        };
-                        // Save to current state:
-                        currentState[layer] = newObjInstance;
-                        // Update activeObjIds:
-                        activeObjIds[newObjInstance.id] = newObjInstance;
-                        // Add to nextEvents:
-                        resolvedStates.nextEvents.push({
-                            type: enums_1.EventType.START,
-                            time: newInstance.start,
-                            objId: obj.id,
-                        });
-                        eventObjectTimes[newInstance.start + ''] = enums_1.EventType.START;
-                        changed = true;
-                    }
-                    else if (removeOldObj) {
-                        // Remove from current state:
-                        delete currentState[layer];
-                        changed = true;
-                    }
-                    if (changed) {
-                        // Also make sure any children are updated:
-                        // Go through the object on hand, but also the one in the currentState
-                        const parentsToCheck = [];
-                        if (obj.isGroup)
-                            parentsToCheck.push(obj);
-                        if ((_c = currentState[layer]) === null || _c === void 0 ? void 0 : _c.isGroup)
-                            parentsToCheck.push(currentState[layer]);
-                        for (const parent of parentsToCheck) {
-                            if ((_d = parent.children) === null || _d === void 0 ? void 0 : _d.length) {
-                                for (const child0 of parent.children) {
-                                    const child = resolved.objects[child0.id];
-                                    for (const instance of child.resolved.instances) {
-                                        if (instance.start <= time && ((_e = instance.end) !== null && _e !== void 0 ? _e : Infinity) > time) {
-                                            // Add the child instance, because that might be affected:
-                                            addPointInTime(time, 'child', 99, child, instance);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else {
-                    // Is a keyframe
-                    const keyframe = obj;
-                    // Add keyframe to resolvedStates.objects:
-                    resolvedStates.objects[keyframe.id] = keyframe;
-                    const toBeEnabled = (instance.start || 0) <= time && ((_f = instance.end) !== null && _f !== void 0 ? _f : Infinity) > time;
-                    if (toBeEnabled) {
-                        const newObjInstance = {
-                            ...keyframe,
-                            instance: instance,
-                        };
-                        activeKeyframes[keyframe.id] = newObjInstance;
-                    }
-                    else {
-                        delete activeKeyframes[keyframe.id];
-                        delete activeKeyframesChecked[keyframe.id];
-                    }
-                }
-            }
-        }
-        // Go through keyframes:
-        const activeKeyframesObjIds = Object.keys(activeKeyframes);
-        for (let i = 0; i < activeKeyframesObjIds.length; i++) {
-            const objId = activeKeyframesObjIds[i];
-            const objInstance = activeKeyframes[objId];
-            const keyframe = objInstance;
-            const instance = objInstance.instance;
-            // Check if the keyframe's parent is currently active?
-            if (keyframe.resolved.parentId) {
-                const parentObj = activeObjIds[keyframe.resolved.parentId];
-                if (parentObj && parentObj.layer) {
-                    // keyframe is on an active object
-                    const parentObjInstance = currentState[parentObj.layer];
-                    if (parentObjInstance) {
-                        if (!activeKeyframesChecked[objId]) {
-                            // hasn't started before
-                            activeKeyframesChecked[objId] = true;
-                            // Note: The keyframes are a little bit special, since their contents are applied to their parents.
-                            // That application is done in the getStateAtTime function.
-                            // Add keyframe to nextEvents:
-                            keyframeEvents.push({
-                                type: enums_1.EventType.KEYFRAME,
-                                time: instance.start,
-                                objId: keyframe.id,
-                            });
-                            // Cap end within parent
-                            let instanceEnd = Math.min((_g = instance.end) !== null && _g !== void 0 ? _g : Infinity, (_h = parentObjInstance.instance.end) !== null && _h !== void 0 ? _h : Infinity);
-                            if (instanceEnd === Infinity)
-                                instanceEnd = null;
-                            if (instanceEnd !== null) {
-                                keyframeEvents.push({
-                                    type: enums_1.EventType.KEYFRAME,
-                                    time: instanceEnd,
-                                    objId: keyframe.id,
-                                });
-                            }
-                        }
-                        continue;
-                    }
-                }
-            }
-            // else: the keyframe:s parent isn't active, remove/stop the keyframe then:
-            delete activeKeyframesChecked[objId];
-        }
-    }
-    // At this point, the instances of all objects (excluding keyframes) are properly calculated,
-    // taking into account priorities, clashes etc.
-    // Cap children inside their parents:
-    {
-        const allChildren = Object.values(resolvedStates.objects)
-            .filter((obj) => !!obj.resolved.parentId)
-            // Sort, so that the outermost are handled first:
-            .sort((a, b) => {
-            var _a, _b;
-            return ((_a = a.resolved.levelDeep) !== null && _a !== void 0 ? _a : 0) - ((_b = b.resolved.levelDeep) !== null && _b !== void 0 ? _b : 0);
-        });
-        for (const obj of allChildren) {
-            if (obj.resolved.parentId) {
-                const parent = resolvedStates.objects[obj.resolved.parentId];
-                if (parent) {
-                    obj.resolved.instances = (0, lib_1.cleanInstances)((0, lib_1.capInstances)(obj.resolved.instances, parent.resolved.instances), false, false);
-                }
-            }
-        }
-    }
-    // At this point, all instances of the objects should be properly calculated.
-    // Go through all instances of all objects to create temporary states of all layers and times:
-    {
-        const states = {};
-        for (const id of Object.keys(resolvedStates.objects)) {
-            const obj = resolvedStates.objects[id];
-            const layer = `${obj.layer}`;
-            if (!states[layer])
-                states[layer] = {};
-            const stateLayer = states[layer];
-            if (!obj.resolved.isKeyframe) {
-                for (const instance of obj.resolved.instances) {
-                    const startTime = instance.start + '';
-                    if (!stateLayer[startTime]) {
-                        stateLayer[startTime] = {
-                            startCount: 0,
-                            endCount: 0,
-                            objectInstance: null,
-                        };
-                    }
-                    const newObjInstance = {
-                        ...obj,
-                        instance: instance,
-                    };
-                    stateLayer[startTime].startCount++;
-                    stateLayer[startTime].objectInstance = newObjInstance;
-                    if (instance.end !== null) {
-                        const endTime = instance.end + '';
-                        if (!stateLayer[endTime]) {
-                            stateLayer[endTime] = {
-                                startCount: 0,
-                                endCount: 0,
-                                objectInstance: null,
-                            };
-                        }
-                        stateLayer[endTime].endCount++;
-                    }
-                }
-            }
-        }
-        // Go through the temporary states and apply the changes to the resolvedStates.state:
-        for (const layer of Object.keys(states)) {
-            let sum = 0;
-            const times = Object.keys(states[layer])
-                .map((time) => parseFloat(time))
-                // Sort chronologically:
-                .sort((a, b) => a - b);
-            for (let i = 0; i < times.length; i++) {
-                const time = times[i];
-                const s = states[layer][`${time}`];
-                sum += s.startCount;
-                sum -= s.endCount;
-                // Check for fatal bugs:
-                // If the sum is larger than one, more than one start was found at the same time, which should not be possible.
-                if (sum > 1)
-                    throw new Error(`Too many start events at ${layer} ${time}: ${sum}`);
-                // If the sum is less than zero, there have been more ends than starts, which should not be possible.
-                if (sum < 0)
-                    throw new Error(`Too many end events at ${layer} ${time}: ${sum}`);
-                // Apply the state:
-                if (!resolvedStates.state[layer])
-                    resolvedStates.state[layer] = {};
-                if (sum) {
-                    // This means that the object has started
-                    if (!s.objectInstance)
-                        throw new Error(`objectInstance not set, event though sum=${sum} at ${layer} ${time}`);
-                    resolvedStates.state[layer][time] = [s.objectInstance];
-                }
-                else {
-                    // This means that the object has ended
-                    resolvedStates.state[layer][time] = null;
-                }
-            }
-        }
-    }
-    // Cap keyframes inside their parents:
-    for (const id of Object.keys(resolvedStates.objects)) {
-        {
-            const keyframe = resolvedStates.objects[id];
-            if (keyframe.resolved.isKeyframe && keyframe.resolved.parentId) {
-                const parent = resolvedStates.objects[keyframe.resolved.parentId];
-                if (parent) {
-                    // Cap the keyframe instances within its parents instances:
-                    keyframe.resolved.instances = (0, lib_1.capInstances)(keyframe.resolved.instances, parent.resolved.instances);
-                    // Ensure sure the instances are in the state
-                    for (let i = 0; i < keyframe.resolved.instances.length; i++) {
-                        const instance = keyframe.resolved.instances[i];
-                        const keyframeInstance = {
-                            ...keyframe,
-                            instance: instance,
-                            isKeyframe: true,
-                            keyframeEndTime: instance.end,
-                        };
-                        // Add keyframe to the tracking state:
-                        addKeyframeAtTime(resolvedStates.state, parent.layer + '', instance.start, keyframeInstance);
-                    }
-                }
-            }
-        }
-        // Fix (merge) instances of seamless objects:
-        {
-            const obj = resolvedStates.objects[id];
-            if (obj.seamless && obj.resolved.instances.length > 1) {
-                obj.resolved.instances = (0, lib_1.cleanInstances)(obj.resolved.instances, true, false);
-            }
-        }
-    }
-    // At this point, ALL instances are properly calculated.
-    // Go through the keyframe events and add them to nextEvents:
-    for (let i = 0; i < keyframeEvents.length; i++) {
-        const keyframeEvent = keyframeEvents[i];
-        // tslint:disable-next-line
-        if (eventObjectTimes[keyframeEvent.time + ''] === undefined) {
-            // no need to put a keyframe event if there's already another event there
-            resolvedStates.nextEvents.push(keyframeEvent);
-            eventObjectTimes[keyframeEvent.time + ''] = enums_1.EventType.KEYFRAME;
-        }
-    }
-    resolvedStates.nextEvents.sort((a, b) => {
+exports.sortEvents = void 0;
+function sortEvents(events, additionalSortFcnBefore) {
+    return events.sort((a, b) => {
         if (a.time > b.time)
             return 1;
         if (a.time < b.time)
             return -1;
-        if (a.type > b.type)
+        const result = additionalSortFcnBefore ? additionalSortFcnBefore(a, b) : 0;
+        if (result !== 0)
+            return result;
+        const aId = a.data && (a.data.id || a.data.instance?.id);
+        const bId = b.data && (b.data.id || b.data.instance?.id);
+        if (aId && bId && aId === bId) {
+            // If the events refer to the same instance id, let the start event be first,
+            // to handle zero-length instances.
+            if (a.value && !b.value)
+                return -1;
+            if (!a.value && b.value)
+                return 1;
+        }
+        else {
+            // ends events first:
+            if (a.value && !b.value)
+                return 1;
+            if (!a.value && b.value)
+                return -1;
+        }
+        return 0;
+    });
+}
+exports.sortEvents = sortEvents;
+
+},{}],26:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isNumericExpr = exports.isConstantExpr = void 0;
+/** Returns true if an expression is a constant (ie doesn't reference something else) */
+function isConstantExpr(str) {
+    if (isNumericExpr(str))
+        return true;
+    if (typeof str === 'string') {
+        const lStr = str.toLowerCase();
+        if (lStr === 'true')
+            return true;
+        if (lStr === 'false')
+            return true;
+    }
+    return false;
+}
+exports.isConstantExpr = isConstantExpr;
+function isNumericExpr(str) {
+    if (str === null)
+        return false;
+    if (typeof str === 'number')
+        return true;
+    if (typeof str === 'string')
+        return !!/^[-+]?[0-9.]+$/.exec(str) && !isNaN(parseFloat(str));
+    return false;
+}
+exports.isNumericExpr = isNumericExpr;
+
+},{}],27:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getInstanceHash = exports.getInstancesHash = exports.baseInstance = exports.baseInstances = exports.spliceInstances = exports.getInstanceIntersection = exports.instanceIsActive = exports.isInstanceId = void 0;
+const lib_1 = require("./lib");
+function isInstanceId(str) {
+    return str.startsWith('@');
+}
+exports.isInstanceId = isInstanceId;
+function instanceIsActive(instance, time) {
+    return instance.start <= time && (instance.end ?? Infinity) > time;
+}
+exports.instanceIsActive = instanceIsActive;
+/**
+ * Returns the intersection of two instances.
+ * Example: for (10-20) and (15-30), the intersection is (15-20).
+ */
+function getInstanceIntersection(a, b) {
+    if (a.start < (b.end ?? Infinity) && (a.end ?? Infinity) > b.start) {
+        const start = Math.max(a.start, b.start);
+        const end = Math.min(a.end ?? Infinity, b.end ?? Infinity);
+        return {
+            start,
+            end: end === Infinity ? null : end,
+        };
+    }
+    return null;
+}
+exports.getInstanceIntersection = getInstanceIntersection;
+/**
+ * Convenience function to splice an array of instances
+ * @param instances The array of instances to splice
+ * @param fcn Operator function.
+ *   Is called for each instance in the array,
+ *   and should return an instance (or an array of instances) to insert in place of the original instance,
+ *   or undefined to remove the instance.
+ *   (To leave the instance unchanged, return the original instance)
+ */
+function spliceInstances(instances, fcn) {
+    for (let i = 0; i < instances.length; i++) {
+        const fcnResult = fcn(instances[i]);
+        const insertInstances = fcnResult === undefined ? [] : (0, lib_1.ensureArray)(fcnResult);
+        if (insertInstances.length === 0) {
+            instances.splice(i, 1);
+            i--;
+        }
+        else {
+            if (insertInstances[0] === instances[i])
+                continue;
+            // replace:
+            instances.splice(i, 1, ...insertInstances);
+            i += insertInstances.length - 1;
+        }
+    }
+}
+exports.spliceInstances = spliceInstances;
+function baseInstances(instances) {
+    return instances.map((instance) => baseInstance(instance));
+}
+exports.baseInstances = baseInstances;
+function baseInstance(instance) {
+    return {
+        start: instance.start,
+        end: instance.end,
+    };
+}
+exports.baseInstance = baseInstance;
+/** Returns a string hash that changes whenever any instance has changed in a significant way */
+function getInstancesHash(instances) {
+    const strs = [];
+    for (const instance of instances) {
+        strs.push(getInstanceHash(instance));
+    }
+    return strs.join(',');
+}
+exports.getInstancesHash = getInstancesHash;
+/** Returns a string hash that changes whenever an instance has changed in a significant way */
+function getInstanceHash(instance) {
+    const orgStart = instance.originalStart ?? instance.start;
+    const orgEnd = instance.originalEnd ?? instance.end;
+    return `${instance.start}_${instance.end ?? 'null'}(${orgStart}_${orgEnd ?? 'null'})`;
+}
+exports.getInstanceHash = getInstanceHash;
+
+},{"./lib":28}],28:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.compareStrings = exports.mapToObject = exports.assertNever = exports.isArray = exports.ensureArray = exports.isEmpty = exports.sortBy = exports.omit = exports.uniq = exports.clone = exports.pushToArray = exports.reduceObj = exports.isObject = exports.last = exports.compact = exports.literal = void 0;
+function literal(o) {
+    return o;
+}
+exports.literal = literal;
+function compact(arr) {
+    const returnValues = [];
+    for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        if (!!v || (v !== undefined && v !== null && v !== ''))
+            returnValues.push(v);
+    }
+    return returnValues;
+}
+exports.compact = compact;
+function last(arr) {
+    return arr[arr.length - 1];
+}
+exports.last = last;
+/** Returns true if argument is an object (or an array, but NOT null) */
+function isObject(o) {
+    return o !== null && typeof o === 'object';
+}
+exports.isObject = isObject;
+function reduceObj(objs, fcn, initialValue) {
+    return Object.entries(objs).reduce((memo, [key, value], index) => {
+        return fcn(memo, value, key, index);
+    }, initialValue);
+}
+exports.reduceObj = reduceObj;
+/**
+ * Concatenate two arrays of values.
+ * This is a convenience function used to ensure that the two arrays are of the same type.
+ * @param arr0 The array of values to push into
+ * @param arr1 An array of values to push into arr0
+ */
+function pushToArray(arr0, arr1) {
+    for (const item of arr1) {
+        arr0.push(item);
+    }
+}
+exports.pushToArray = pushToArray;
+function clone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
+exports.clone = clone;
+function uniq(arr) {
+    return Array.from(new Set(arr));
+}
+exports.uniq = uniq;
+function omit(obj, ...keys) {
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (keys.some((k) => (Array.isArray(k) ? k.includes(key) : k === key)))
+            continue;
+        result[key] = value;
+    }
+    return result;
+}
+exports.omit = omit;
+function sortBy(arr, fcn) {
+    const sortArray = arr.map((item) => ({ item, value: fcn(item) }));
+    sortArray.sort((a, b) => {
+        if (a.value < b.value)
             return -1;
-        if (a.type < b.type)
-            return 1;
-        if (a.objId < b.objId)
-            return -1;
-        if (a.objId > b.objId)
+        if (a.value > b.value)
             return 1;
         return 0;
     });
-    if (cache) {
-        cache.resolvedStates = resolvedStates;
-    }
-    return resolvedStates;
+    return sortArray.map((item) => item.item);
 }
-exports.resolveStates = resolveStates;
-function applyKeyframeContent(parentContent, keyframeContent) {
-    for (const [attr, value] of Object.entries(keyframeContent)) {
-        if (_.isArray(value)) {
-            if (!_.isArray(parentContent[attr]))
-                parentContent[attr] = [];
-            applyKeyframeContent(parentContent[attr], value);
-            parentContent[attr].splice(value.length, 99999);
-        }
-        else if (_.isObject(value)) {
-            if (!_.isObject(parentContent[attr]) || _.isArray(parentContent[attr]))
-                parentContent[attr] = {};
-            applyKeyframeContent(parentContent[attr], value);
+exports.sortBy = sortBy;
+function isEmpty(obj) {
+    return Object.keys(obj).length === 0;
+}
+exports.isEmpty = isEmpty;
+function ensureArray(value) {
+    return Array.isArray(value) ? value : [value];
+}
+exports.ensureArray = ensureArray;
+/**
+ * Slightly faster than Array.isArray().
+ * Note: Ensure that the value provided is not null!
+ */
+function isArray(arg) {
+    // Fast-path optimization: checking for .length is faster than Array.isArray()
+    return arg.length !== undefined && Array.isArray(arg);
+}
+exports.isArray = isArray;
+/**
+ * Helper function to simply assert that the value is of the type never.
+ * Usage: at the end of if/else or switch, to ensure that there is no fallthrough.
+ */
+function assertNever(_value) {
+    // does nothing
+}
+exports.assertNever = assertNever;
+function mapToObject(map) {
+    const o = {};
+    for (const [key, value] of map.entries()) {
+        o[key] = value;
+    }
+    return o;
+}
+exports.mapToObject = mapToObject;
+function compareStrings(a, b) {
+    return a > b ? 1 : a < b ? -1 : 0;
+}
+exports.compareStrings = compareStrings;
+
+},{}],29:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ticTocPrint = exports.tic = exports.activatePerformanceDebugging = void 0;
+const perf_hooks_1 = require("perf_hooks");
+let durations = {};
+let callCounts = {};
+let firstStartTime = 0;
+let active = false;
+function activatePerformanceDebugging(activate) {
+    active = activate;
+}
+exports.activatePerformanceDebugging = activatePerformanceDebugging;
+function noop() {
+    // nothing
+}
+/**
+ * Used to measure performance.
+ * Starts a measurement, returns a function that should be called when the measurement is done.
+ */
+function tic(id) {
+    if (!active)
+        return noop;
+    if (!firstStartTime)
+        firstStartTime = perf_hooks_1.performance.now();
+    if (!durations[id])
+        durations[id] = 0;
+    if (!callCounts[id])
+        callCounts[id] = 0;
+    const startTime = perf_hooks_1.performance.now();
+    return () => {
+        const duration = perf_hooks_1.performance.now() - startTime;
+        durations[id] = durations[id] + duration;
+        callCounts[id]++;
+    };
+}
+exports.tic = tic;
+function ticTocPrint() {
+    if (!active)
+        return;
+    const totalDuration = perf_hooks_1.performance.now() - firstStartTime;
+    const maxKeyLength = Math.max(...Object.keys(durations).map((k) => k.length));
+    console.log('ticTocPrint\n' +
+        padStr(`Total duration `, maxKeyLength + 2) +
+        `${Math.floor(totalDuration)}\n` +
+        Object.entries(durations)
+            .map((d) => {
+            let str = padStr(`${d[0]} `, maxKeyLength + 2);
+            str += padStr(`${Math.floor(d[1] * 10) / 10}`, 8);
+            str += padStr(`${Math.floor((d[1] / totalDuration) * 1000) / 10}%`, 7);
+            str += `${callCounts[d[0]]}`;
+            return str;
+        })
+            .join('\n'));
+    durations = {};
+    callCounts = {};
+}
+exports.ticTocPrint = ticTocPrint;
+function padStr(str, length) {
+    while (str.length < length)
+        str += ' ';
+    return str;
+}
+
+},{"perf_hooks":3}],30:[function(require,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isReference = exports.joinReferences = exports.getRefInstanceId = exports.isInstanceReference = exports.getRefLayer = exports.isLayerReference = exports.getRefClass = exports.isClassReference = exports.getRefObjectId = exports.isObjectReference = void 0;
+const lib_1 = require("./lib");
+const performance_1 = require("./performance");
+/*
+ * References are strings that are added to instances,
+ * to indicate what objects, layers or classes they are derived from.
+ */
+function isObjectReference(ref) {
+    return ref.startsWith('#');
+}
+exports.isObjectReference = isObjectReference;
+function getRefObjectId(ref) {
+    return ref.slice(1);
+}
+exports.getRefObjectId = getRefObjectId;
+function isClassReference(ref) {
+    return ref.startsWith('.');
+}
+exports.isClassReference = isClassReference;
+function getRefClass(ref) {
+    return ref.slice(1);
+}
+exports.getRefClass = getRefClass;
+function isLayerReference(ref) {
+    return ref.startsWith('$');
+}
+exports.isLayerReference = isLayerReference;
+function getRefLayer(ref) {
+    return ref.slice(1);
+}
+exports.getRefLayer = getRefLayer;
+function isInstanceReference(ref) {
+    return ref.startsWith('@');
+}
+exports.isInstanceReference = isInstanceReference;
+function getRefInstanceId(ref) {
+    return ref.slice(1);
+}
+exports.getRefInstanceId = getRefInstanceId;
+/** Add / join references Arrays. Returns a sorted list of unique references */
+function joinReferences(references, ...addReferences) {
+    const toc = (0, performance_1.tic)('     joinReferences');
+    // Fast path: When nothing is added, return the original references:
+    if (addReferences.length === 1 && typeof addReferences[0] !== 'string' && addReferences[0].length === 0) {
+        return [...references];
+    }
+    let fastPath = false;
+    let resultingRefs = [];
+    // Fast path: When a single ref is added
+    if (addReferences.length === 1 && typeof addReferences[0] === 'string') {
+        if (references.includes(addReferences[0])) {
+            // The value already exists, return the original references:
+            return [...references];
         }
         else {
-            parentContent[attr] = value;
+            // just quickly add the reference and jump forward to sorting of resultingRefs:
+            resultingRefs = [...references];
+            resultingRefs.push(addReferences[0]);
+            fastPath = true;
         }
     }
-}
-exports.applyKeyframeContent = applyKeyframeContent;
-function getTimesFromParents(resolved, obj) {
-    let times = [];
-    const parentObj = obj.resolved.parentId ? resolved.objects[obj.resolved.parentId] : null;
-    if (parentObj && parentObj.resolved.resolved) {
-        for (const instance of parentObj.resolved.instances) {
-            times.push({ time: instance.start, enable: true });
-            if (instance.end)
-                times.push({ time: instance.end, enable: false });
+    if (!fastPath) {
+        const refSet = new Set();
+        for (const ref of references) {
+            if (!refSet.has(ref)) {
+                refSet.add(ref);
+                resultingRefs.push(ref);
+            }
         }
-        times = times.concat(getTimesFromParents(resolved, parentObj));
-    }
-    return times;
-}
-function addKeyframeAtTime(states, layer, time, objInstanceKf) {
-    if (!states[layer])
-        states[layer] = {};
-    const inner = states[layer][time + ''];
-    if (!inner) {
-        states[layer][time + ''] = [objInstanceKf];
-    }
-    else {
-        inner.push(objInstanceKf);
-    }
-}
-function getStateAtTime(states, layer, requestTime) {
-    var _a;
-    const layerStates = states[layer] || {};
-    const times = Object.keys(layerStates)
-        .map((time) => parseFloat(time))
-        // Sort chronologically:
-        .sort((a, b) => {
-        return a - b;
-    });
-    let state = null;
-    let isCloned = false;
-    for (let i = 0; i < times.length; i++) {
-        const time = times[i];
-        if (time <= requestTime) {
-            const currentStateInstances = layerStates[time + ''];
-            if (currentStateInstances && currentStateInstances.length) {
-                const keyframes = [];
-                for (let i = 0; i < currentStateInstances.length; i++) {
-                    const currentState = currentStateInstances[i];
-                    if (currentState && currentState.isKeyframe) {
-                        keyframes.push(currentState);
-                    }
-                    else {
-                        state = currentState;
-                        isCloned = false;
-                    }
-                }
-                for (let i = 0; i < keyframes.length; i++) {
-                    const keyframe = keyframes[i];
-                    if (state && keyframe.resolved.parentId === state.id) {
-                        if (((_a = keyframe.keyframeEndTime) !== null && _a !== void 0 ? _a : Infinity) > requestTime) {
-                            if (!isCloned) {
-                                isCloned = true;
-                                state = {
-                                    ...state,
-                                    content: JSON.parse(JSON.stringify(state.content)),
-                                };
-                            }
-                            // Apply the keyframe on the state:
-                            applyKeyframeContent(state.content, keyframe.content);
-                        }
-                    }
+        for (const addReference of addReferences) {
+            if (typeof addReference === 'string') {
+                if (!refSet.has(addReference)) {
+                    refSet.add(addReference);
+                    resultingRefs.push(addReference);
                 }
             }
             else {
-                state = null;
-                isCloned = false;
+                for (const ref of addReference) {
+                    if (!refSet.has(ref)) {
+                        refSet.add(ref);
+                        resultingRefs.push(ref);
+                    }
+                }
             }
         }
-        else {
-            break;
-        }
     }
-    return state;
+    resultingRefs.sort(lib_1.compareStrings);
+    toc();
+    return resultingRefs;
 }
-function isResolvedStates(resolved) {
-    return !!(resolved && typeof resolved === 'object' && resolved.objects && resolved.state && resolved.nextEvents);
+exports.joinReferences = joinReferences;
+function isReference(ref) {
+    return ref !== null && typeof ref.value === 'number';
 }
+exports.isReference = isReference;
 
-},{"../api/enums":6,"../lib":8,"./common":10,"underscore":17}],14:[function(require,module,exports){
+},{"./lib":28,"./performance":29}],31:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateKeyframe = exports.validateObject = exports.validateTimeline = void 0;
-const _ = require("underscore");
-function validateObject0(obj, strict, uniqueIds) {
-    if (!uniqueIds)
-        uniqueIds = {};
-    if (!obj)
-        throw new Error(`Object is undefined`);
-    if (typeof obj !== 'object')
-        throw new Error(`Object is not an object`);
-    if (!obj.id)
-        throw new Error(`Object missing "id" attribute`);
-    if (typeof obj.id !== 'string')
-        throw new Error(`Object "id" attribute is not a string: "${obj.id}"`);
-    if (uniqueIds[obj.id])
-        throw new Error(`Object id "${obj.id}" is not unique`);
-    uniqueIds[obj.id] = true;
-    if (obj.layer === undefined)
-        throw new Error(`Object "${obj.id}": "layer" attribute is undefined`);
-    if (!obj.content)
-        throw new Error(`Object "${obj.id}": "content" attribute must be set`);
-    if (!obj.enable)
-        throw new Error(`Object "${obj.id}": "enable" attribute must be set`);
-    const enables = _.isArray(obj.enable) ? obj.enable : [obj.enable];
-    for (let i = 0; i < enables.length; i++) {
-        const enable = enables[i];
-        if (enable.start !== undefined) {
-            if (strict && enable.while !== undefined)
-                throw new Error(`Object "${obj.id}": "enable.start" and "enable.while" cannot be combined`);
-            if (strict && enable.end !== undefined && enable.duration !== undefined)
-                throw new Error(`Object "${obj.id}": "enable.end" and "enable.duration" cannot be combined`);
-        }
-        else if (enable.while !== undefined) {
-            if (strict && enable.end !== undefined)
-                throw new Error(`Object "${obj.id}": "enable.while" and "enable.end" cannot be combined`);
-            if (strict && enable.duration !== undefined)
-                throw new Error(`Object "${obj.id}": "enable.while" and "enable.duration" cannot be combined`);
-        }
-        else
-            throw new Error(`Object "${obj.id}": "enable.start" or "enable.while" must be set`);
-    }
-    if (obj.keyframes) {
-        for (let i = 0; i < obj.keyframes.length; i++) {
-            const keyframe = obj.keyframes[i];
-            try {
-                validateKeyframe0(keyframe, strict, uniqueIds);
-            }
-            catch (e) {
-                throw new Error(`Object "${obj.id}" keyframe[${i}]: ${e}`);
-            }
-        }
-    }
-    if (obj.classes) {
-        for (let i = 0; i < obj.classes.length; i++) {
-            const className = obj.classes[i];
-            if (className && typeof className !== 'string')
-                throw new Error(`Object "${obj.id}": "classes[${i}]" is not a string`);
-        }
-    }
-    if (obj.children && !obj.isGroup)
-        throw new Error(`Object "${obj.id}": attribute "children" is set but "isGroup" is not`);
-    if (obj.isGroup && !obj.children)
-        throw new Error(`Object "${obj.id}": attribute "isGroup" is set but "children" missing`);
-    if (obj.children) {
-        for (let i = 0; i < obj.children.length; i++) {
-            const child = obj.children[i];
-            try {
-                validateObject0(child, strict, uniqueIds);
-            }
-            catch (e) {
-                throw new Error(`Object "${obj.id}" child[${i}]: ${e}`);
-            }
-        }
-    }
-    if (obj.priority !== undefined && !_.isNumber(obj.priority))
-        throw new Error(`Object "${obj.id}": attribute "priority" is not a number`);
-}
-function validateKeyframe0(keyframe, strict, uniqueIds) {
-    if (!uniqueIds)
-        uniqueIds = {};
-    if (!keyframe)
-        throw new Error(`Keyframe is undefined`);
-    if (typeof keyframe !== 'object')
-        throw new Error(`Keyframe is not an object`);
-    if (!keyframe.id)
-        throw new Error(`Keyframe missing id attribute`);
-    if (typeof keyframe.id !== 'string')
-        throw new Error(`Keyframe id attribute is not a string: "${keyframe.id}"`);
-    if (uniqueIds[keyframe.id])
-        throw new Error(`Keyframe id "${keyframe.id}" is not unique`);
-    uniqueIds[keyframe.id] = true;
-    if (!keyframe.content)
-        throw new Error(`Keyframe "${keyframe.id}": "content" attribute must be set`);
-    if (!keyframe.enable)
-        throw new Error(`Keyframe "${keyframe.id}": "enable" attribute must be set`);
-    const enables = _.isArray(keyframe.enable) ? keyframe.enable : [keyframe.enable];
-    for (let i = 0; i < enables.length; i++) {
-        const enable = enables[i];
-        if (enable.start !== undefined) {
-            if (strict && enable.while !== undefined)
-                throw new Error(`Keyframe "${keyframe.id}": "enable.start" and "enable.while" cannot be combined`);
-            if (strict && enable.end !== undefined && enable.duration !== undefined)
-                throw new Error(`Keyframe "${keyframe.id}": "enable.end" and "enable.duration" cannot be combined`);
-        }
-        else if (enable.while !== undefined) {
-            if (strict && enable.end !== undefined)
-                throw new Error(`Keyframe "${keyframe.id}": "enable.while" and "enable.end" cannot be combined`);
-            if (strict && enable.duration !== undefined)
-                throw new Error(`Keyframe "${keyframe.id}": "enable.while" and "enable.duration" cannot be combined`);
-        }
-        else
-            throw new Error(`Keyframe "${keyframe.id}": "enable.start" or "enable.while" must be set`);
-    }
-    if (keyframe.classes) {
-        for (let i = 0; i < keyframe.classes.length; i++) {
-            const className = keyframe.classes[i];
-            if (className && !_.isString(className))
-                throw new Error(`Keyframe "${keyframe.id}": "classes[${i}]" is not a string`);
-        }
-    }
-}
+exports.objHasLayer = void 0;
 /**
- * Validates all objects in the timeline. Throws an error if something's wrong
- * @param timeline The timeline to validate
- * @param strict Set to true to enable some strict rules (rules that can possibly be ignored)
+ * Returns true if object has a layer.
+ * Note: Objects without a layer are called "transparent objects",
+ * and won't be present in the resolved state.
  */
-function validateTimeline(timeline, strict) {
-    const uniqueIds = {};
-    for (let i = 0; i < timeline.length; i++) {
-        const obj = timeline[i];
-        validateObject0(obj, strict, uniqueIds);
-    }
+function objHasLayer(obj) {
+    return obj.layer !== undefined && obj.layer !== '' && obj.layer !== null;
 }
-exports.validateTimeline = validateTimeline;
-/**
- * Validates a Timeline-object. Throws an error if something's wrong
- * @param timeline The timeline to validate
- * @param strict Set to true to enable some strict rules (rules that can possibly be ignored)
- */
-function validateObject(obj, strict) {
-    validateObject0(obj, strict);
-}
-exports.validateObject = validateObject;
-/**
- * Validates a Timeline-keyframe. Throws an error if something's wrong
- * @param timeline The timeline to validate
- * @param strict Set to true to enable some strict rules (rules that can possibly be ignored)
- */
-function validateKeyframe(keyframe, strict) {
-    validateKeyframe0(keyframe, strict);
-}
-exports.validateKeyframe = validateKeyframe;
+exports.objHasLayer = objHasLayer;
 
-},{"underscore":17}],15:[function(require,module,exports){
-(function (global){
+},{}],32:[function(require,module,exports){
+(function (global){(function (){
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
 
@@ -5976,12 +7111,16 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
-/* global global, define, System, Reflect, Promise */
+/* global global, define, Symbol, Reflect, Promise, SuppressedError */
 var __extends;
 var __assign;
 var __rest;
 var __decorate;
 var __param;
+var __esDecorate;
+var __runInitializers;
+var __propKey;
+var __setFunctionName;
 var __metadata;
 var __awaiter;
 var __generator;
@@ -6002,6 +7141,8 @@ var __classPrivateFieldGet;
 var __classPrivateFieldSet;
 var __classPrivateFieldIn;
 var __createBinding;
+var __addDisposableResource;
+var __disposeResources;
 (function (factory) {
     var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
     if (typeof define === "function" && define.amd) {
@@ -6069,6 +7210,51 @@ var __createBinding;
         return function (target, key) { decorator(target, key, paramIndex); }
     };
 
+    __esDecorate = function (ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
+        function accept(f) { if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected"); return f; }
+        var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
+        var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
+        var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
+        var _, done = false;
+        for (var i = decorators.length - 1; i >= 0; i--) {
+            var context = {};
+            for (var p in contextIn) context[p] = p === "access" ? {} : contextIn[p];
+            for (var p in contextIn.access) context.access[p] = contextIn.access[p];
+            context.addInitializer = function (f) { if (done) throw new TypeError("Cannot add initializers after decoration has completed"); extraInitializers.push(accept(f || null)); };
+            var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);
+            if (kind === "accessor") {
+                if (result === void 0) continue;
+                if (result === null || typeof result !== "object") throw new TypeError("Object expected");
+                if (_ = accept(result.get)) descriptor.get = _;
+                if (_ = accept(result.set)) descriptor.set = _;
+                if (_ = accept(result.init)) initializers.unshift(_);
+            }
+            else if (_ = accept(result)) {
+                if (kind === "field") initializers.unshift(_);
+                else descriptor[key] = _;
+            }
+        }
+        if (target) Object.defineProperty(target, contextIn.name, descriptor);
+        done = true;
+    };
+
+    __runInitializers = function (thisArg, initializers, value) {
+        var useValue = arguments.length > 2;
+        for (var i = 0; i < initializers.length; i++) {
+            value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
+        }
+        return useValue ? value : void 0;
+    };
+
+    __propKey = function (x) {
+        return typeof x === "symbol" ? x : "".concat(x);
+    };
+
+    __setFunctionName = function (f, name, prefix) {
+        if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
+        return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
+    };
+
     __metadata = function (metadataKey, metadataValue) {
         if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
     };
@@ -6089,7 +7275,7 @@ var __createBinding;
         function verb(n) { return function (v) { return step([n, v]); }; }
         function step(op) {
             if (f) throw new TypeError("Generator is already executing.");
-            while (_) try {
+            while (g && (g = 0, op[0] && (_ = 0)), _) try {
                 if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
                 if (y = 0, t) op = [op[0] & 2, t.value];
                 switch (op[0]) {
@@ -6201,7 +7387,7 @@ var __createBinding;
     __asyncDelegator = function (o) {
         var i, p;
         return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
-        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: n === "return" } : f ? f(v) : v; } : f; }
+        function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: false } : f ? f(v) : v; } : f; }
     };
 
     __asyncValues = function (o) {
@@ -6253,11 +7439,62 @@ var __createBinding;
         return typeof state === "function" ? receiver === state : state.has(receiver);
     };
 
+    __addDisposableResource = function (env, value, async) {
+        if (value !== null && value !== void 0) {
+            if (typeof value !== "object" && typeof value !== "function") throw new TypeError("Object expected.");
+            var dispose;
+            if (async) {
+                if (!Symbol.asyncDispose) throw new TypeError("Symbol.asyncDispose is not defined.");
+                dispose = value[Symbol.asyncDispose];
+            }
+            if (dispose === void 0) {
+                if (!Symbol.dispose) throw new TypeError("Symbol.dispose is not defined.");
+                dispose = value[Symbol.dispose];
+            }
+            if (typeof dispose !== "function") throw new TypeError("Object not disposable.");
+            env.stack.push({ value: value, dispose: dispose, async: async });
+        }
+        else if (async) {
+            env.stack.push({ async: true });
+        }
+        return value;
+    };
+
+    var _SuppressedError = typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+        var e = new Error(message);
+        return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+    };
+
+    __disposeResources = function (env) {
+        function fail(e) {
+            env.error = env.hasError ? new _SuppressedError(e, env.error, "An error was suppressed during disposal.") : e;
+            env.hasError = true;
+        }
+        function next() {
+            while (env.stack.length) {
+                var rec = env.stack.pop();
+                try {
+                    var result = rec.dispose && rec.dispose.call(rec.value);
+                    if (rec.async) return Promise.resolve(result).then(next, function(e) { fail(e); return next(); });
+                }
+                catch (e) {
+                    fail(e);
+                }
+            }
+            if (env.hasError) throw env.error;
+        }
+        return next();
+    };
+
     exporter("__extends", __extends);
     exporter("__assign", __assign);
     exporter("__rest", __rest);
     exporter("__decorate", __decorate);
     exporter("__param", __param);
+    exporter("__esDecorate", __esDecorate);
+    exporter("__runInitializers", __runInitializers);
+    exporter("__propKey", __propKey);
+    exporter("__setFunctionName", __setFunctionName);
     exporter("__metadata", __metadata);
     exporter("__awaiter", __awaiter);
     exporter("__generator", __generator);
@@ -6278,26 +7515,29 @@ var __createBinding;
     exporter("__classPrivateFieldGet", __classPrivateFieldGet);
     exporter("__classPrivateFieldSet", __classPrivateFieldSet);
     exporter("__classPrivateFieldIn", __classPrivateFieldIn);
+    exporter("__addDisposableResource", __addDisposableResource);
+    exporter("__disposeResources", __disposeResources);
 });
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{}],16:[function(require,module,exports){
-(function (global){
+},{}],33:[function(require,module,exports){
+(function (global){(function (){
 /*! *****************************************************************************
-Copyright (c) Microsoft Corporation. All rights reserved.
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License. You may obtain a copy of the
-License at http://www.apache.org/licenses/LICENSE-2.0
+Copyright (c) Microsoft Corporation.
 
-THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
-WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
 
-See the Apache Version 2.0 License for specific language governing permissions
-and limitations under the License.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
+
 /* global global, define, System, Reflect, Promise */
 var __extends;
 var __assign;
@@ -6311,6 +7551,7 @@ var __exportStar;
 var __values;
 var __read;
 var __spread;
+var __spreadArrays;
 var __await;
 var __asyncGenerator;
 var __asyncDelegator;
@@ -6318,6 +7559,9 @@ var __asyncValues;
 var __makeTemplateObject;
 var __importStar;
 var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __createBinding;
 (function (factory) {
     var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
     if (typeof define === "function" && define.amd) {
@@ -6365,8 +7609,10 @@ var __importDefault;
         for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
             t[p] = s[p];
         if (s != null && typeof Object.getOwnPropertySymbols === "function")
-            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) if (e.indexOf(p[i]) < 0)
-                t[p[i]] = s[p[i]];
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
         return t;
     };
 
@@ -6386,10 +7632,11 @@ var __importDefault;
     };
 
     __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
         return new (P || (P = Promise))(function (resolve, reject) {
             function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
             function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
             step((generator = generator.apply(thisArg, _arguments || [])).next());
         });
     };
@@ -6422,19 +7669,25 @@ var __importDefault;
         }
     };
 
+    __createBinding = function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    };
+
     __exportStar = function (m, exports) {
-        for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
+        for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) exports[p] = m[p];
     };
 
     __values = function (o) {
-        var m = typeof Symbol === "function" && o[Symbol.iterator], i = 0;
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
         if (m) return m.call(o);
-        return {
+        if (o && typeof o.length === "number") return {
             next: function () {
                 if (o && i >= o.length) o = void 0;
                 return { value: o && o[i++], done: !o };
             }
         };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
     };
 
     __read = function (o, n) {
@@ -6458,6 +7711,14 @@ var __importDefault;
         for (var ar = [], i = 0; i < arguments.length; i++)
             ar = ar.concat(__read(arguments[i]));
         return ar;
+    };
+
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
     };
 
     __await = function (v) {
@@ -6507,6 +7768,21 @@ var __importDefault;
         return (mod && mod.__esModule) ? mod : { "default": mod };
     };
 
+    __classPrivateFieldGet = function (receiver, privateMap) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to get private field on non-instance");
+        }
+        return privateMap.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, privateMap, value) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to set private field on non-instance");
+        }
+        privateMap.set(receiver, value);
+        return value;
+    };
+
     exporter("__extends", __extends);
     exporter("__assign", __assign);
     exporter("__rest", __rest);
@@ -6516,9 +7792,11 @@ var __importDefault;
     exporter("__awaiter", __awaiter);
     exporter("__generator", __generator);
     exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
     exporter("__values", __values);
     exporter("__read", __read);
     exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
     exporter("__await", __await);
     exporter("__asyncGenerator", __asyncGenerator);
     exporter("__asyncDelegator", __asyncDelegator);
@@ -6526,2056 +7804,11 @@ var __importDefault;
     exporter("__makeTemplateObject", __makeTemplateObject);
     exporter("__importStar", __importStar);
     exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
 });
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-
-},{}],17:[function(require,module,exports){
-(function (global){
-(function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-  typeof define === 'function' && define.amd ? define('underscore', factory) :
-  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, (function () {
-    var current = global._;
-    var exports = global._ = factory();
-    exports.noConflict = function () { global._ = current; return exports; };
-  }()));
-}(this, (function () {
-  //     Underscore.js 1.13.4
-  //     https://underscorejs.org
-  //     (c) 2009-2022 Jeremy Ashkenas, Julian Gonggrijp, and DocumentCloud and Investigative Reporters & Editors
-  //     Underscore may be freely distributed under the MIT license.
-
-  // Current version.
-  var VERSION = '1.13.4';
-
-  // Establish the root object, `window` (`self`) in the browser, `global`
-  // on the server, or `this` in some virtual machines. We use `self`
-  // instead of `window` for `WebWorker` support.
-  var root = (typeof self == 'object' && self.self === self && self) ||
-            (typeof global == 'object' && global.global === global && global) ||
-            Function('return this')() ||
-            {};
-
-  // Save bytes in the minified (but not gzipped) version:
-  var ArrayProto = Array.prototype, ObjProto = Object.prototype;
-  var SymbolProto = typeof Symbol !== 'undefined' ? Symbol.prototype : null;
-
-  // Create quick reference variables for speed access to core prototypes.
-  var push = ArrayProto.push,
-      slice = ArrayProto.slice,
-      toString = ObjProto.toString,
-      hasOwnProperty = ObjProto.hasOwnProperty;
-
-  // Modern feature detection.
-  var supportsArrayBuffer = typeof ArrayBuffer !== 'undefined',
-      supportsDataView = typeof DataView !== 'undefined';
-
-  // All **ECMAScript 5+** native function implementations that we hope to use
-  // are declared here.
-  var nativeIsArray = Array.isArray,
-      nativeKeys = Object.keys,
-      nativeCreate = Object.create,
-      nativeIsView = supportsArrayBuffer && ArrayBuffer.isView;
-
-  // Create references to these builtin functions because we override them.
-  var _isNaN = isNaN,
-      _isFinite = isFinite;
-
-  // Keys in IE < 9 that won't be iterated by `for key in ...` and thus missed.
-  var hasEnumBug = !{toString: null}.propertyIsEnumerable('toString');
-  var nonEnumerableProps = ['valueOf', 'isPrototypeOf', 'toString',
-    'propertyIsEnumerable', 'hasOwnProperty', 'toLocaleString'];
-
-  // The largest integer that can be represented exactly.
-  var MAX_ARRAY_INDEX = Math.pow(2, 53) - 1;
-
-  // Some functions take a variable number of arguments, or a few expected
-  // arguments at the beginning and then a variable number of values to operate
-  // on. This helper accumulates all remaining arguments past the function’s
-  // argument length (or an explicit `startIndex`), into an array that becomes
-  // the last argument. Similar to ES6’s "rest parameter".
-  function restArguments(func, startIndex) {
-    startIndex = startIndex == null ? func.length - 1 : +startIndex;
-    return function() {
-      var length = Math.max(arguments.length - startIndex, 0),
-          rest = Array(length),
-          index = 0;
-      for (; index < length; index++) {
-        rest[index] = arguments[index + startIndex];
-      }
-      switch (startIndex) {
-        case 0: return func.call(this, rest);
-        case 1: return func.call(this, arguments[0], rest);
-        case 2: return func.call(this, arguments[0], arguments[1], rest);
-      }
-      var args = Array(startIndex + 1);
-      for (index = 0; index < startIndex; index++) {
-        args[index] = arguments[index];
-      }
-      args[startIndex] = rest;
-      return func.apply(this, args);
-    };
-  }
-
-  // Is a given variable an object?
-  function isObject(obj) {
-    var type = typeof obj;
-    return type === 'function' || (type === 'object' && !!obj);
-  }
-
-  // Is a given value equal to null?
-  function isNull(obj) {
-    return obj === null;
-  }
-
-  // Is a given variable undefined?
-  function isUndefined(obj) {
-    return obj === void 0;
-  }
-
-  // Is a given value a boolean?
-  function isBoolean(obj) {
-    return obj === true || obj === false || toString.call(obj) === '[object Boolean]';
-  }
-
-  // Is a given value a DOM element?
-  function isElement(obj) {
-    return !!(obj && obj.nodeType === 1);
-  }
-
-  // Internal function for creating a `toString`-based type tester.
-  function tagTester(name) {
-    var tag = '[object ' + name + ']';
-    return function(obj) {
-      return toString.call(obj) === tag;
-    };
-  }
-
-  var isString = tagTester('String');
-
-  var isNumber = tagTester('Number');
-
-  var isDate = tagTester('Date');
-
-  var isRegExp = tagTester('RegExp');
-
-  var isError = tagTester('Error');
-
-  var isSymbol = tagTester('Symbol');
-
-  var isArrayBuffer = tagTester('ArrayBuffer');
-
-  var isFunction = tagTester('Function');
-
-  // Optimize `isFunction` if appropriate. Work around some `typeof` bugs in old
-  // v8, IE 11 (#1621), Safari 8 (#1929), and PhantomJS (#2236).
-  var nodelist = root.document && root.document.childNodes;
-  if (typeof /./ != 'function' && typeof Int8Array != 'object' && typeof nodelist != 'function') {
-    isFunction = function(obj) {
-      return typeof obj == 'function' || false;
-    };
-  }
-
-  var isFunction$1 = isFunction;
-
-  var hasObjectTag = tagTester('Object');
-
-  // In IE 10 - Edge 13, `DataView` has string tag `'[object Object]'`.
-  // In IE 11, the most common among them, this problem also applies to
-  // `Map`, `WeakMap` and `Set`.
-  var hasStringTagBug = (
-        supportsDataView && hasObjectTag(new DataView(new ArrayBuffer(8)))
-      ),
-      isIE11 = (typeof Map !== 'undefined' && hasObjectTag(new Map));
-
-  var isDataView = tagTester('DataView');
-
-  // In IE 10 - Edge 13, we need a different heuristic
-  // to determine whether an object is a `DataView`.
-  function ie10IsDataView(obj) {
-    return obj != null && isFunction$1(obj.getInt8) && isArrayBuffer(obj.buffer);
-  }
-
-  var isDataView$1 = (hasStringTagBug ? ie10IsDataView : isDataView);
-
-  // Is a given value an array?
-  // Delegates to ECMA5's native `Array.isArray`.
-  var isArray = nativeIsArray || tagTester('Array');
-
-  // Internal function to check whether `key` is an own property name of `obj`.
-  function has$1(obj, key) {
-    return obj != null && hasOwnProperty.call(obj, key);
-  }
-
-  var isArguments = tagTester('Arguments');
-
-  // Define a fallback version of the method in browsers (ahem, IE < 9), where
-  // there isn't any inspectable "Arguments" type.
-  (function() {
-    if (!isArguments(arguments)) {
-      isArguments = function(obj) {
-        return has$1(obj, 'callee');
-      };
-    }
-  }());
-
-  var isArguments$1 = isArguments;
-
-  // Is a given object a finite number?
-  function isFinite$1(obj) {
-    return !isSymbol(obj) && _isFinite(obj) && !isNaN(parseFloat(obj));
-  }
-
-  // Is the given value `NaN`?
-  function isNaN$1(obj) {
-    return isNumber(obj) && _isNaN(obj);
-  }
-
-  // Predicate-generating function. Often useful outside of Underscore.
-  function constant(value) {
-    return function() {
-      return value;
-    };
-  }
-
-  // Common internal logic for `isArrayLike` and `isBufferLike`.
-  function createSizePropertyCheck(getSizeProperty) {
-    return function(collection) {
-      var sizeProperty = getSizeProperty(collection);
-      return typeof sizeProperty == 'number' && sizeProperty >= 0 && sizeProperty <= MAX_ARRAY_INDEX;
-    }
-  }
-
-  // Internal helper to generate a function to obtain property `key` from `obj`.
-  function shallowProperty(key) {
-    return function(obj) {
-      return obj == null ? void 0 : obj[key];
-    };
-  }
-
-  // Internal helper to obtain the `byteLength` property of an object.
-  var getByteLength = shallowProperty('byteLength');
-
-  // Internal helper to determine whether we should spend extensive checks against
-  // `ArrayBuffer` et al.
-  var isBufferLike = createSizePropertyCheck(getByteLength);
-
-  // Is a given value a typed array?
-  var typedArrayPattern = /\[object ((I|Ui)nt(8|16|32)|Float(32|64)|Uint8Clamped|Big(I|Ui)nt64)Array\]/;
-  function isTypedArray(obj) {
-    // `ArrayBuffer.isView` is the most future-proof, so use it when available.
-    // Otherwise, fall back on the above regular expression.
-    return nativeIsView ? (nativeIsView(obj) && !isDataView$1(obj)) :
-                  isBufferLike(obj) && typedArrayPattern.test(toString.call(obj));
-  }
-
-  var isTypedArray$1 = supportsArrayBuffer ? isTypedArray : constant(false);
-
-  // Internal helper to obtain the `length` property of an object.
-  var getLength = shallowProperty('length');
-
-  // Internal helper to create a simple lookup structure.
-  // `collectNonEnumProps` used to depend on `_.contains`, but this led to
-  // circular imports. `emulatedSet` is a one-off solution that only works for
-  // arrays of strings.
-  function emulatedSet(keys) {
-    var hash = {};
-    for (var l = keys.length, i = 0; i < l; ++i) hash[keys[i]] = true;
-    return {
-      contains: function(key) { return hash[key] === true; },
-      push: function(key) {
-        hash[key] = true;
-        return keys.push(key);
-      }
-    };
-  }
-
-  // Internal helper. Checks `keys` for the presence of keys in IE < 9 that won't
-  // be iterated by `for key in ...` and thus missed. Extends `keys` in place if
-  // needed.
-  function collectNonEnumProps(obj, keys) {
-    keys = emulatedSet(keys);
-    var nonEnumIdx = nonEnumerableProps.length;
-    var constructor = obj.constructor;
-    var proto = (isFunction$1(constructor) && constructor.prototype) || ObjProto;
-
-    // Constructor is a special case.
-    var prop = 'constructor';
-    if (has$1(obj, prop) && !keys.contains(prop)) keys.push(prop);
-
-    while (nonEnumIdx--) {
-      prop = nonEnumerableProps[nonEnumIdx];
-      if (prop in obj && obj[prop] !== proto[prop] && !keys.contains(prop)) {
-        keys.push(prop);
-      }
-    }
-  }
-
-  // Retrieve the names of an object's own properties.
-  // Delegates to **ECMAScript 5**'s native `Object.keys`.
-  function keys(obj) {
-    if (!isObject(obj)) return [];
-    if (nativeKeys) return nativeKeys(obj);
-    var keys = [];
-    for (var key in obj) if (has$1(obj, key)) keys.push(key);
-    // Ahem, IE < 9.
-    if (hasEnumBug) collectNonEnumProps(obj, keys);
-    return keys;
-  }
-
-  // Is a given array, string, or object empty?
-  // An "empty" object has no enumerable own-properties.
-  function isEmpty(obj) {
-    if (obj == null) return true;
-    // Skip the more expensive `toString`-based type checks if `obj` has no
-    // `.length`.
-    var length = getLength(obj);
-    if (typeof length == 'number' && (
-      isArray(obj) || isString(obj) || isArguments$1(obj)
-    )) return length === 0;
-    return getLength(keys(obj)) === 0;
-  }
-
-  // Returns whether an object has a given set of `key:value` pairs.
-  function isMatch(object, attrs) {
-    var _keys = keys(attrs), length = _keys.length;
-    if (object == null) return !length;
-    var obj = Object(object);
-    for (var i = 0; i < length; i++) {
-      var key = _keys[i];
-      if (attrs[key] !== obj[key] || !(key in obj)) return false;
-    }
-    return true;
-  }
-
-  // If Underscore is called as a function, it returns a wrapped object that can
-  // be used OO-style. This wrapper holds altered versions of all functions added
-  // through `_.mixin`. Wrapped objects may be chained.
-  function _$1(obj) {
-    if (obj instanceof _$1) return obj;
-    if (!(this instanceof _$1)) return new _$1(obj);
-    this._wrapped = obj;
-  }
-
-  _$1.VERSION = VERSION;
-
-  // Extracts the result from a wrapped and chained object.
-  _$1.prototype.value = function() {
-    return this._wrapped;
-  };
-
-  // Provide unwrapping proxies for some methods used in engine operations
-  // such as arithmetic and JSON stringification.
-  _$1.prototype.valueOf = _$1.prototype.toJSON = _$1.prototype.value;
-
-  _$1.prototype.toString = function() {
-    return String(this._wrapped);
-  };
-
-  // Internal function to wrap or shallow-copy an ArrayBuffer,
-  // typed array or DataView to a new view, reusing the buffer.
-  function toBufferView(bufferSource) {
-    return new Uint8Array(
-      bufferSource.buffer || bufferSource,
-      bufferSource.byteOffset || 0,
-      getByteLength(bufferSource)
-    );
-  }
-
-  // We use this string twice, so give it a name for minification.
-  var tagDataView = '[object DataView]';
-
-  // Internal recursive comparison function for `_.isEqual`.
-  function eq(a, b, aStack, bStack) {
-    // Identical objects are equal. `0 === -0`, but they aren't identical.
-    // See the [Harmony `egal` proposal](https://wiki.ecmascript.org/doku.php?id=harmony:egal).
-    if (a === b) return a !== 0 || 1 / a === 1 / b;
-    // `null` or `undefined` only equal to itself (strict comparison).
-    if (a == null || b == null) return false;
-    // `NaN`s are equivalent, but non-reflexive.
-    if (a !== a) return b !== b;
-    // Exhaust primitive checks
-    var type = typeof a;
-    if (type !== 'function' && type !== 'object' && typeof b != 'object') return false;
-    return deepEq(a, b, aStack, bStack);
-  }
-
-  // Internal recursive comparison function for `_.isEqual`.
-  function deepEq(a, b, aStack, bStack) {
-    // Unwrap any wrapped objects.
-    if (a instanceof _$1) a = a._wrapped;
-    if (b instanceof _$1) b = b._wrapped;
-    // Compare `[[Class]]` names.
-    var className = toString.call(a);
-    if (className !== toString.call(b)) return false;
-    // Work around a bug in IE 10 - Edge 13.
-    if (hasStringTagBug && className == '[object Object]' && isDataView$1(a)) {
-      if (!isDataView$1(b)) return false;
-      className = tagDataView;
-    }
-    switch (className) {
-      // These types are compared by value.
-      case '[object RegExp]':
-        // RegExps are coerced to strings for comparison (Note: '' + /a/i === '/a/i')
-      case '[object String]':
-        // Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
-        // equivalent to `new String("5")`.
-        return '' + a === '' + b;
-      case '[object Number]':
-        // `NaN`s are equivalent, but non-reflexive.
-        // Object(NaN) is equivalent to NaN.
-        if (+a !== +a) return +b !== +b;
-        // An `egal` comparison is performed for other numeric values.
-        return +a === 0 ? 1 / +a === 1 / b : +a === +b;
-      case '[object Date]':
-      case '[object Boolean]':
-        // Coerce dates and booleans to numeric primitive values. Dates are compared by their
-        // millisecond representations. Note that invalid dates with millisecond representations
-        // of `NaN` are not equivalent.
-        return +a === +b;
-      case '[object Symbol]':
-        return SymbolProto.valueOf.call(a) === SymbolProto.valueOf.call(b);
-      case '[object ArrayBuffer]':
-      case tagDataView:
-        // Coerce to typed array so we can fall through.
-        return deepEq(toBufferView(a), toBufferView(b), aStack, bStack);
-    }
-
-    var areArrays = className === '[object Array]';
-    if (!areArrays && isTypedArray$1(a)) {
-        var byteLength = getByteLength(a);
-        if (byteLength !== getByteLength(b)) return false;
-        if (a.buffer === b.buffer && a.byteOffset === b.byteOffset) return true;
-        areArrays = true;
-    }
-    if (!areArrays) {
-      if (typeof a != 'object' || typeof b != 'object') return false;
-
-      // Objects with different constructors are not equivalent, but `Object`s or `Array`s
-      // from different frames are.
-      var aCtor = a.constructor, bCtor = b.constructor;
-      if (aCtor !== bCtor && !(isFunction$1(aCtor) && aCtor instanceof aCtor &&
-                               isFunction$1(bCtor) && bCtor instanceof bCtor)
-                          && ('constructor' in a && 'constructor' in b)) {
-        return false;
-      }
-    }
-    // Assume equality for cyclic structures. The algorithm for detecting cyclic
-    // structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
-
-    // Initializing stack of traversed objects.
-    // It's done here since we only need them for objects and arrays comparison.
-    aStack = aStack || [];
-    bStack = bStack || [];
-    var length = aStack.length;
-    while (length--) {
-      // Linear search. Performance is inversely proportional to the number of
-      // unique nested structures.
-      if (aStack[length] === a) return bStack[length] === b;
-    }
-
-    // Add the first object to the stack of traversed objects.
-    aStack.push(a);
-    bStack.push(b);
-
-    // Recursively compare objects and arrays.
-    if (areArrays) {
-      // Compare array lengths to determine if a deep comparison is necessary.
-      length = a.length;
-      if (length !== b.length) return false;
-      // Deep compare the contents, ignoring non-numeric properties.
-      while (length--) {
-        if (!eq(a[length], b[length], aStack, bStack)) return false;
-      }
-    } else {
-      // Deep compare objects.
-      var _keys = keys(a), key;
-      length = _keys.length;
-      // Ensure that both objects contain the same number of properties before comparing deep equality.
-      if (keys(b).length !== length) return false;
-      while (length--) {
-        // Deep compare each member
-        key = _keys[length];
-        if (!(has$1(b, key) && eq(a[key], b[key], aStack, bStack))) return false;
-      }
-    }
-    // Remove the first object from the stack of traversed objects.
-    aStack.pop();
-    bStack.pop();
-    return true;
-  }
-
-  // Perform a deep comparison to check if two objects are equal.
-  function isEqual(a, b) {
-    return eq(a, b);
-  }
-
-  // Retrieve all the enumerable property names of an object.
-  function allKeys(obj) {
-    if (!isObject(obj)) return [];
-    var keys = [];
-    for (var key in obj) keys.push(key);
-    // Ahem, IE < 9.
-    if (hasEnumBug) collectNonEnumProps(obj, keys);
-    return keys;
-  }
-
-  // Since the regular `Object.prototype.toString` type tests don't work for
-  // some types in IE 11, we use a fingerprinting heuristic instead, based
-  // on the methods. It's not great, but it's the best we got.
-  // The fingerprint method lists are defined below.
-  function ie11fingerprint(methods) {
-    var length = getLength(methods);
-    return function(obj) {
-      if (obj == null) return false;
-      // `Map`, `WeakMap` and `Set` have no enumerable keys.
-      var keys = allKeys(obj);
-      if (getLength(keys)) return false;
-      for (var i = 0; i < length; i++) {
-        if (!isFunction$1(obj[methods[i]])) return false;
-      }
-      // If we are testing against `WeakMap`, we need to ensure that
-      // `obj` doesn't have a `forEach` method in order to distinguish
-      // it from a regular `Map`.
-      return methods !== weakMapMethods || !isFunction$1(obj[forEachName]);
-    };
-  }
-
-  // In the interest of compact minification, we write
-  // each string in the fingerprints only once.
-  var forEachName = 'forEach',
-      hasName = 'has',
-      commonInit = ['clear', 'delete'],
-      mapTail = ['get', hasName, 'set'];
-
-  // `Map`, `WeakMap` and `Set` each have slightly different
-  // combinations of the above sublists.
-  var mapMethods = commonInit.concat(forEachName, mapTail),
-      weakMapMethods = commonInit.concat(mapTail),
-      setMethods = ['add'].concat(commonInit, forEachName, hasName);
-
-  var isMap = isIE11 ? ie11fingerprint(mapMethods) : tagTester('Map');
-
-  var isWeakMap = isIE11 ? ie11fingerprint(weakMapMethods) : tagTester('WeakMap');
-
-  var isSet = isIE11 ? ie11fingerprint(setMethods) : tagTester('Set');
-
-  var isWeakSet = tagTester('WeakSet');
-
-  // Retrieve the values of an object's properties.
-  function values(obj) {
-    var _keys = keys(obj);
-    var length = _keys.length;
-    var values = Array(length);
-    for (var i = 0; i < length; i++) {
-      values[i] = obj[_keys[i]];
-    }
-    return values;
-  }
-
-  // Convert an object into a list of `[key, value]` pairs.
-  // The opposite of `_.object` with one argument.
-  function pairs(obj) {
-    var _keys = keys(obj);
-    var length = _keys.length;
-    var pairs = Array(length);
-    for (var i = 0; i < length; i++) {
-      pairs[i] = [_keys[i], obj[_keys[i]]];
-    }
-    return pairs;
-  }
-
-  // Invert the keys and values of an object. The values must be serializable.
-  function invert(obj) {
-    var result = {};
-    var _keys = keys(obj);
-    for (var i = 0, length = _keys.length; i < length; i++) {
-      result[obj[_keys[i]]] = _keys[i];
-    }
-    return result;
-  }
-
-  // Return a sorted list of the function names available on the object.
-  function functions(obj) {
-    var names = [];
-    for (var key in obj) {
-      if (isFunction$1(obj[key])) names.push(key);
-    }
-    return names.sort();
-  }
-
-  // An internal function for creating assigner functions.
-  function createAssigner(keysFunc, defaults) {
-    return function(obj) {
-      var length = arguments.length;
-      if (defaults) obj = Object(obj);
-      if (length < 2 || obj == null) return obj;
-      for (var index = 1; index < length; index++) {
-        var source = arguments[index],
-            keys = keysFunc(source),
-            l = keys.length;
-        for (var i = 0; i < l; i++) {
-          var key = keys[i];
-          if (!defaults || obj[key] === void 0) obj[key] = source[key];
-        }
-      }
-      return obj;
-    };
-  }
-
-  // Extend a given object with all the properties in passed-in object(s).
-  var extend = createAssigner(allKeys);
-
-  // Assigns a given object with all the own properties in the passed-in
-  // object(s).
-  // (https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Object/assign)
-  var extendOwn = createAssigner(keys);
-
-  // Fill in a given object with default properties.
-  var defaults = createAssigner(allKeys, true);
-
-  // Create a naked function reference for surrogate-prototype-swapping.
-  function ctor() {
-    return function(){};
-  }
-
-  // An internal function for creating a new object that inherits from another.
-  function baseCreate(prototype) {
-    if (!isObject(prototype)) return {};
-    if (nativeCreate) return nativeCreate(prototype);
-    var Ctor = ctor();
-    Ctor.prototype = prototype;
-    var result = new Ctor;
-    Ctor.prototype = null;
-    return result;
-  }
-
-  // Creates an object that inherits from the given prototype object.
-  // If additional properties are provided then they will be added to the
-  // created object.
-  function create(prototype, props) {
-    var result = baseCreate(prototype);
-    if (props) extendOwn(result, props);
-    return result;
-  }
-
-  // Create a (shallow-cloned) duplicate of an object.
-  function clone(obj) {
-    if (!isObject(obj)) return obj;
-    return isArray(obj) ? obj.slice() : extend({}, obj);
-  }
-
-  // Invokes `interceptor` with the `obj` and then returns `obj`.
-  // The primary purpose of this method is to "tap into" a method chain, in
-  // order to perform operations on intermediate results within the chain.
-  function tap(obj, interceptor) {
-    interceptor(obj);
-    return obj;
-  }
-
-  // Normalize a (deep) property `path` to array.
-  // Like `_.iteratee`, this function can be customized.
-  function toPath$1(path) {
-    return isArray(path) ? path : [path];
-  }
-  _$1.toPath = toPath$1;
-
-  // Internal wrapper for `_.toPath` to enable minification.
-  // Similar to `cb` for `_.iteratee`.
-  function toPath(path) {
-    return _$1.toPath(path);
-  }
-
-  // Internal function to obtain a nested property in `obj` along `path`.
-  function deepGet(obj, path) {
-    var length = path.length;
-    for (var i = 0; i < length; i++) {
-      if (obj == null) return void 0;
-      obj = obj[path[i]];
-    }
-    return length ? obj : void 0;
-  }
-
-  // Get the value of the (deep) property on `path` from `object`.
-  // If any property in `path` does not exist or if the value is
-  // `undefined`, return `defaultValue` instead.
-  // The `path` is normalized through `_.toPath`.
-  function get(object, path, defaultValue) {
-    var value = deepGet(object, toPath(path));
-    return isUndefined(value) ? defaultValue : value;
-  }
-
-  // Shortcut function for checking if an object has a given property directly on
-  // itself (in other words, not on a prototype). Unlike the internal `has`
-  // function, this public version can also traverse nested properties.
-  function has(obj, path) {
-    path = toPath(path);
-    var length = path.length;
-    for (var i = 0; i < length; i++) {
-      var key = path[i];
-      if (!has$1(obj, key)) return false;
-      obj = obj[key];
-    }
-    return !!length;
-  }
-
-  // Keep the identity function around for default iteratees.
-  function identity(value) {
-    return value;
-  }
-
-  // Returns a predicate for checking whether an object has a given set of
-  // `key:value` pairs.
-  function matcher(attrs) {
-    attrs = extendOwn({}, attrs);
-    return function(obj) {
-      return isMatch(obj, attrs);
-    };
-  }
-
-  // Creates a function that, when passed an object, will traverse that object’s
-  // properties down the given `path`, specified as an array of keys or indices.
-  function property(path) {
-    path = toPath(path);
-    return function(obj) {
-      return deepGet(obj, path);
-    };
-  }
-
-  // Internal function that returns an efficient (for current engines) version
-  // of the passed-in callback, to be repeatedly applied in other Underscore
-  // functions.
-  function optimizeCb(func, context, argCount) {
-    if (context === void 0) return func;
-    switch (argCount == null ? 3 : argCount) {
-      case 1: return function(value) {
-        return func.call(context, value);
-      };
-      // The 2-argument case is omitted because we’re not using it.
-      case 3: return function(value, index, collection) {
-        return func.call(context, value, index, collection);
-      };
-      case 4: return function(accumulator, value, index, collection) {
-        return func.call(context, accumulator, value, index, collection);
-      };
-    }
-    return function() {
-      return func.apply(context, arguments);
-    };
-  }
-
-  // An internal function to generate callbacks that can be applied to each
-  // element in a collection, returning the desired result — either `_.identity`,
-  // an arbitrary callback, a property matcher, or a property accessor.
-  function baseIteratee(value, context, argCount) {
-    if (value == null) return identity;
-    if (isFunction$1(value)) return optimizeCb(value, context, argCount);
-    if (isObject(value) && !isArray(value)) return matcher(value);
-    return property(value);
-  }
-
-  // External wrapper for our callback generator. Users may customize
-  // `_.iteratee` if they want additional predicate/iteratee shorthand styles.
-  // This abstraction hides the internal-only `argCount` argument.
-  function iteratee(value, context) {
-    return baseIteratee(value, context, Infinity);
-  }
-  _$1.iteratee = iteratee;
-
-  // The function we call internally to generate a callback. It invokes
-  // `_.iteratee` if overridden, otherwise `baseIteratee`.
-  function cb(value, context, argCount) {
-    if (_$1.iteratee !== iteratee) return _$1.iteratee(value, context);
-    return baseIteratee(value, context, argCount);
-  }
-
-  // Returns the results of applying the `iteratee` to each element of `obj`.
-  // In contrast to `_.map` it returns an object.
-  function mapObject(obj, iteratee, context) {
-    iteratee = cb(iteratee, context);
-    var _keys = keys(obj),
-        length = _keys.length,
-        results = {};
-    for (var index = 0; index < length; index++) {
-      var currentKey = _keys[index];
-      results[currentKey] = iteratee(obj[currentKey], currentKey, obj);
-    }
-    return results;
-  }
-
-  // Predicate-generating function. Often useful outside of Underscore.
-  function noop(){}
-
-  // Generates a function for a given object that returns a given property.
-  function propertyOf(obj) {
-    if (obj == null) return noop;
-    return function(path) {
-      return get(obj, path);
-    };
-  }
-
-  // Run a function **n** times.
-  function times(n, iteratee, context) {
-    var accum = Array(Math.max(0, n));
-    iteratee = optimizeCb(iteratee, context, 1);
-    for (var i = 0; i < n; i++) accum[i] = iteratee(i);
-    return accum;
-  }
-
-  // Return a random integer between `min` and `max` (inclusive).
-  function random(min, max) {
-    if (max == null) {
-      max = min;
-      min = 0;
-    }
-    return min + Math.floor(Math.random() * (max - min + 1));
-  }
-
-  // A (possibly faster) way to get the current timestamp as an integer.
-  var now = Date.now || function() {
-    return new Date().getTime();
-  };
-
-  // Internal helper to generate functions for escaping and unescaping strings
-  // to/from HTML interpolation.
-  function createEscaper(map) {
-    var escaper = function(match) {
-      return map[match];
-    };
-    // Regexes for identifying a key that needs to be escaped.
-    var source = '(?:' + keys(map).join('|') + ')';
-    var testRegexp = RegExp(source);
-    var replaceRegexp = RegExp(source, 'g');
-    return function(string) {
-      string = string == null ? '' : '' + string;
-      return testRegexp.test(string) ? string.replace(replaceRegexp, escaper) : string;
-    };
-  }
-
-  // Internal list of HTML entities for escaping.
-  var escapeMap = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#x27;',
-    '`': '&#x60;'
-  };
-
-  // Function for escaping strings to HTML interpolation.
-  var _escape = createEscaper(escapeMap);
-
-  // Internal list of HTML entities for unescaping.
-  var unescapeMap = invert(escapeMap);
-
-  // Function for unescaping strings from HTML interpolation.
-  var _unescape = createEscaper(unescapeMap);
-
-  // By default, Underscore uses ERB-style template delimiters. Change the
-  // following template settings to use alternative delimiters.
-  var templateSettings = _$1.templateSettings = {
-    evaluate: /<%([\s\S]+?)%>/g,
-    interpolate: /<%=([\s\S]+?)%>/g,
-    escape: /<%-([\s\S]+?)%>/g
-  };
-
-  // When customizing `_.templateSettings`, if you don't want to define an
-  // interpolation, evaluation or escaping regex, we need one that is
-  // guaranteed not to match.
-  var noMatch = /(.)^/;
-
-  // Certain characters need to be escaped so that they can be put into a
-  // string literal.
-  var escapes = {
-    "'": "'",
-    '\\': '\\',
-    '\r': 'r',
-    '\n': 'n',
-    '\u2028': 'u2028',
-    '\u2029': 'u2029'
-  };
-
-  var escapeRegExp = /\\|'|\r|\n|\u2028|\u2029/g;
-
-  function escapeChar(match) {
-    return '\\' + escapes[match];
-  }
-
-  // In order to prevent third-party code injection through
-  // `_.templateSettings.variable`, we test it against the following regular
-  // expression. It is intentionally a bit more liberal than just matching valid
-  // identifiers, but still prevents possible loopholes through defaults or
-  // destructuring assignment.
-  var bareIdentifier = /^\s*(\w|\$)+\s*$/;
-
-  // JavaScript micro-templating, similar to John Resig's implementation.
-  // Underscore templating handles arbitrary delimiters, preserves whitespace,
-  // and correctly escapes quotes within interpolated code.
-  // NB: `oldSettings` only exists for backwards compatibility.
-  function template(text, settings, oldSettings) {
-    if (!settings && oldSettings) settings = oldSettings;
-    settings = defaults({}, settings, _$1.templateSettings);
-
-    // Combine delimiters into one regular expression via alternation.
-    var matcher = RegExp([
-      (settings.escape || noMatch).source,
-      (settings.interpolate || noMatch).source,
-      (settings.evaluate || noMatch).source
-    ].join('|') + '|$', 'g');
-
-    // Compile the template source, escaping string literals appropriately.
-    var index = 0;
-    var source = "__p+='";
-    text.replace(matcher, function(match, escape, interpolate, evaluate, offset) {
-      source += text.slice(index, offset).replace(escapeRegExp, escapeChar);
-      index = offset + match.length;
-
-      if (escape) {
-        source += "'+\n((__t=(" + escape + "))==null?'':_.escape(__t))+\n'";
-      } else if (interpolate) {
-        source += "'+\n((__t=(" + interpolate + "))==null?'':__t)+\n'";
-      } else if (evaluate) {
-        source += "';\n" + evaluate + "\n__p+='";
-      }
-
-      // Adobe VMs need the match returned to produce the correct offset.
-      return match;
-    });
-    source += "';\n";
-
-    var argument = settings.variable;
-    if (argument) {
-      // Insure against third-party code injection. (CVE-2021-23358)
-      if (!bareIdentifier.test(argument)) throw new Error(
-        'variable is not a bare identifier: ' + argument
-      );
-    } else {
-      // If a variable is not specified, place data values in local scope.
-      source = 'with(obj||{}){\n' + source + '}\n';
-      argument = 'obj';
-    }
-
-    source = "var __t,__p='',__j=Array.prototype.join," +
-      "print=function(){__p+=__j.call(arguments,'');};\n" +
-      source + 'return __p;\n';
-
-    var render;
-    try {
-      render = new Function(argument, '_', source);
-    } catch (e) {
-      e.source = source;
-      throw e;
-    }
-
-    var template = function(data) {
-      return render.call(this, data, _$1);
-    };
-
-    // Provide the compiled source as a convenience for precompilation.
-    template.source = 'function(' + argument + '){\n' + source + '}';
-
-    return template;
-  }
-
-  // Traverses the children of `obj` along `path`. If a child is a function, it
-  // is invoked with its parent as context. Returns the value of the final
-  // child, or `fallback` if any child is undefined.
-  function result(obj, path, fallback) {
-    path = toPath(path);
-    var length = path.length;
-    if (!length) {
-      return isFunction$1(fallback) ? fallback.call(obj) : fallback;
-    }
-    for (var i = 0; i < length; i++) {
-      var prop = obj == null ? void 0 : obj[path[i]];
-      if (prop === void 0) {
-        prop = fallback;
-        i = length; // Ensure we don't continue iterating.
-      }
-      obj = isFunction$1(prop) ? prop.call(obj) : prop;
-    }
-    return obj;
-  }
-
-  // Generate a unique integer id (unique within the entire client session).
-  // Useful for temporary DOM ids.
-  var idCounter = 0;
-  function uniqueId(prefix) {
-    var id = ++idCounter + '';
-    return prefix ? prefix + id : id;
-  }
-
-  // Start chaining a wrapped Underscore object.
-  function chain(obj) {
-    var instance = _$1(obj);
-    instance._chain = true;
-    return instance;
-  }
-
-  // Internal function to execute `sourceFunc` bound to `context` with optional
-  // `args`. Determines whether to execute a function as a constructor or as a
-  // normal function.
-  function executeBound(sourceFunc, boundFunc, context, callingContext, args) {
-    if (!(callingContext instanceof boundFunc)) return sourceFunc.apply(context, args);
-    var self = baseCreate(sourceFunc.prototype);
-    var result = sourceFunc.apply(self, args);
-    if (isObject(result)) return result;
-    return self;
-  }
-
-  // Partially apply a function by creating a version that has had some of its
-  // arguments pre-filled, without changing its dynamic `this` context. `_` acts
-  // as a placeholder by default, allowing any combination of arguments to be
-  // pre-filled. Set `_.partial.placeholder` for a custom placeholder argument.
-  var partial = restArguments(function(func, boundArgs) {
-    var placeholder = partial.placeholder;
-    var bound = function() {
-      var position = 0, length = boundArgs.length;
-      var args = Array(length);
-      for (var i = 0; i < length; i++) {
-        args[i] = boundArgs[i] === placeholder ? arguments[position++] : boundArgs[i];
-      }
-      while (position < arguments.length) args.push(arguments[position++]);
-      return executeBound(func, bound, this, this, args);
-    };
-    return bound;
-  });
-
-  partial.placeholder = _$1;
-
-  // Create a function bound to a given object (assigning `this`, and arguments,
-  // optionally).
-  var bind = restArguments(function(func, context, args) {
-    if (!isFunction$1(func)) throw new TypeError('Bind must be called on a function');
-    var bound = restArguments(function(callArgs) {
-      return executeBound(func, bound, context, this, args.concat(callArgs));
-    });
-    return bound;
-  });
-
-  // Internal helper for collection methods to determine whether a collection
-  // should be iterated as an array or as an object.
-  // Related: https://people.mozilla.org/~jorendorff/es6-draft.html#sec-tolength
-  // Avoids a very nasty iOS 8 JIT bug on ARM-64. #2094
-  var isArrayLike = createSizePropertyCheck(getLength);
-
-  // Internal implementation of a recursive `flatten` function.
-  function flatten$1(input, depth, strict, output) {
-    output = output || [];
-    if (!depth && depth !== 0) {
-      depth = Infinity;
-    } else if (depth <= 0) {
-      return output.concat(input);
-    }
-    var idx = output.length;
-    for (var i = 0, length = getLength(input); i < length; i++) {
-      var value = input[i];
-      if (isArrayLike(value) && (isArray(value) || isArguments$1(value))) {
-        // Flatten current level of array or arguments object.
-        if (depth > 1) {
-          flatten$1(value, depth - 1, strict, output);
-          idx = output.length;
-        } else {
-          var j = 0, len = value.length;
-          while (j < len) output[idx++] = value[j++];
-        }
-      } else if (!strict) {
-        output[idx++] = value;
-      }
-    }
-    return output;
-  }
-
-  // Bind a number of an object's methods to that object. Remaining arguments
-  // are the method names to be bound. Useful for ensuring that all callbacks
-  // defined on an object belong to it.
-  var bindAll = restArguments(function(obj, keys) {
-    keys = flatten$1(keys, false, false);
-    var index = keys.length;
-    if (index < 1) throw new Error('bindAll must be passed function names');
-    while (index--) {
-      var key = keys[index];
-      obj[key] = bind(obj[key], obj);
-    }
-    return obj;
-  });
-
-  // Memoize an expensive function by storing its results.
-  function memoize(func, hasher) {
-    var memoize = function(key) {
-      var cache = memoize.cache;
-      var address = '' + (hasher ? hasher.apply(this, arguments) : key);
-      if (!has$1(cache, address)) cache[address] = func.apply(this, arguments);
-      return cache[address];
-    };
-    memoize.cache = {};
-    return memoize;
-  }
-
-  // Delays a function for the given number of milliseconds, and then calls
-  // it with the arguments supplied.
-  var delay = restArguments(function(func, wait, args) {
-    return setTimeout(function() {
-      return func.apply(null, args);
-    }, wait);
-  });
-
-  // Defers a function, scheduling it to run after the current call stack has
-  // cleared.
-  var defer = partial(delay, _$1, 1);
-
-  // Returns a function, that, when invoked, will only be triggered at most once
-  // during a given window of time. Normally, the throttled function will run
-  // as much as it can, without ever going more than once per `wait` duration;
-  // but if you'd like to disable the execution on the leading edge, pass
-  // `{leading: false}`. To disable execution on the trailing edge, ditto.
-  function throttle(func, wait, options) {
-    var timeout, context, args, result;
-    var previous = 0;
-    if (!options) options = {};
-
-    var later = function() {
-      previous = options.leading === false ? 0 : now();
-      timeout = null;
-      result = func.apply(context, args);
-      if (!timeout) context = args = null;
-    };
-
-    var throttled = function() {
-      var _now = now();
-      if (!previous && options.leading === false) previous = _now;
-      var remaining = wait - (_now - previous);
-      context = this;
-      args = arguments;
-      if (remaining <= 0 || remaining > wait) {
-        if (timeout) {
-          clearTimeout(timeout);
-          timeout = null;
-        }
-        previous = _now;
-        result = func.apply(context, args);
-        if (!timeout) context = args = null;
-      } else if (!timeout && options.trailing !== false) {
-        timeout = setTimeout(later, remaining);
-      }
-      return result;
-    };
-
-    throttled.cancel = function() {
-      clearTimeout(timeout);
-      previous = 0;
-      timeout = context = args = null;
-    };
-
-    return throttled;
-  }
-
-  // When a sequence of calls of the returned function ends, the argument
-  // function is triggered. The end of a sequence is defined by the `wait`
-  // parameter. If `immediate` is passed, the argument function will be
-  // triggered at the beginning of the sequence instead of at the end.
-  function debounce(func, wait, immediate) {
-    var timeout, previous, args, result, context;
-
-    var later = function() {
-      var passed = now() - previous;
-      if (wait > passed) {
-        timeout = setTimeout(later, wait - passed);
-      } else {
-        timeout = null;
-        if (!immediate) result = func.apply(context, args);
-        // This check is needed because `func` can recursively invoke `debounced`.
-        if (!timeout) args = context = null;
-      }
-    };
-
-    var debounced = restArguments(function(_args) {
-      context = this;
-      args = _args;
-      previous = now();
-      if (!timeout) {
-        timeout = setTimeout(later, wait);
-        if (immediate) result = func.apply(context, args);
-      }
-      return result;
-    });
-
-    debounced.cancel = function() {
-      clearTimeout(timeout);
-      timeout = args = context = null;
-    };
-
-    return debounced;
-  }
-
-  // Returns the first function passed as an argument to the second,
-  // allowing you to adjust arguments, run code before and after, and
-  // conditionally execute the original function.
-  function wrap(func, wrapper) {
-    return partial(wrapper, func);
-  }
-
-  // Returns a negated version of the passed-in predicate.
-  function negate(predicate) {
-    return function() {
-      return !predicate.apply(this, arguments);
-    };
-  }
-
-  // Returns a function that is the composition of a list of functions, each
-  // consuming the return value of the function that follows.
-  function compose() {
-    var args = arguments;
-    var start = args.length - 1;
-    return function() {
-      var i = start;
-      var result = args[start].apply(this, arguments);
-      while (i--) result = args[i].call(this, result);
-      return result;
-    };
-  }
-
-  // Returns a function that will only be executed on and after the Nth call.
-  function after(times, func) {
-    return function() {
-      if (--times < 1) {
-        return func.apply(this, arguments);
-      }
-    };
-  }
-
-  // Returns a function that will only be executed up to (but not including) the
-  // Nth call.
-  function before(times, func) {
-    var memo;
-    return function() {
-      if (--times > 0) {
-        memo = func.apply(this, arguments);
-      }
-      if (times <= 1) func = null;
-      return memo;
-    };
-  }
-
-  // Returns a function that will be executed at most one time, no matter how
-  // often you call it. Useful for lazy initialization.
-  var once = partial(before, 2);
-
-  // Returns the first key on an object that passes a truth test.
-  function findKey(obj, predicate, context) {
-    predicate = cb(predicate, context);
-    var _keys = keys(obj), key;
-    for (var i = 0, length = _keys.length; i < length; i++) {
-      key = _keys[i];
-      if (predicate(obj[key], key, obj)) return key;
-    }
-  }
-
-  // Internal function to generate `_.findIndex` and `_.findLastIndex`.
-  function createPredicateIndexFinder(dir) {
-    return function(array, predicate, context) {
-      predicate = cb(predicate, context);
-      var length = getLength(array);
-      var index = dir > 0 ? 0 : length - 1;
-      for (; index >= 0 && index < length; index += dir) {
-        if (predicate(array[index], index, array)) return index;
-      }
-      return -1;
-    };
-  }
-
-  // Returns the first index on an array-like that passes a truth test.
-  var findIndex = createPredicateIndexFinder(1);
-
-  // Returns the last index on an array-like that passes a truth test.
-  var findLastIndex = createPredicateIndexFinder(-1);
-
-  // Use a comparator function to figure out the smallest index at which
-  // an object should be inserted so as to maintain order. Uses binary search.
-  function sortedIndex(array, obj, iteratee, context) {
-    iteratee = cb(iteratee, context, 1);
-    var value = iteratee(obj);
-    var low = 0, high = getLength(array);
-    while (low < high) {
-      var mid = Math.floor((low + high) / 2);
-      if (iteratee(array[mid]) < value) low = mid + 1; else high = mid;
-    }
-    return low;
-  }
-
-  // Internal function to generate the `_.indexOf` and `_.lastIndexOf` functions.
-  function createIndexFinder(dir, predicateFind, sortedIndex) {
-    return function(array, item, idx) {
-      var i = 0, length = getLength(array);
-      if (typeof idx == 'number') {
-        if (dir > 0) {
-          i = idx >= 0 ? idx : Math.max(idx + length, i);
-        } else {
-          length = idx >= 0 ? Math.min(idx + 1, length) : idx + length + 1;
-        }
-      } else if (sortedIndex && idx && length) {
-        idx = sortedIndex(array, item);
-        return array[idx] === item ? idx : -1;
-      }
-      if (item !== item) {
-        idx = predicateFind(slice.call(array, i, length), isNaN$1);
-        return idx >= 0 ? idx + i : -1;
-      }
-      for (idx = dir > 0 ? i : length - 1; idx >= 0 && idx < length; idx += dir) {
-        if (array[idx] === item) return idx;
-      }
-      return -1;
-    };
-  }
-
-  // Return the position of the first occurrence of an item in an array,
-  // or -1 if the item is not included in the array.
-  // If the array is large and already in sort order, pass `true`
-  // for **isSorted** to use binary search.
-  var indexOf = createIndexFinder(1, findIndex, sortedIndex);
-
-  // Return the position of the last occurrence of an item in an array,
-  // or -1 if the item is not included in the array.
-  var lastIndexOf = createIndexFinder(-1, findLastIndex);
-
-  // Return the first value which passes a truth test.
-  function find(obj, predicate, context) {
-    var keyFinder = isArrayLike(obj) ? findIndex : findKey;
-    var key = keyFinder(obj, predicate, context);
-    if (key !== void 0 && key !== -1) return obj[key];
-  }
-
-  // Convenience version of a common use case of `_.find`: getting the first
-  // object containing specific `key:value` pairs.
-  function findWhere(obj, attrs) {
-    return find(obj, matcher(attrs));
-  }
-
-  // The cornerstone for collection functions, an `each`
-  // implementation, aka `forEach`.
-  // Handles raw objects in addition to array-likes. Treats all
-  // sparse array-likes as if they were dense.
-  function each(obj, iteratee, context) {
-    iteratee = optimizeCb(iteratee, context);
-    var i, length;
-    if (isArrayLike(obj)) {
-      for (i = 0, length = obj.length; i < length; i++) {
-        iteratee(obj[i], i, obj);
-      }
-    } else {
-      var _keys = keys(obj);
-      for (i = 0, length = _keys.length; i < length; i++) {
-        iteratee(obj[_keys[i]], _keys[i], obj);
-      }
-    }
-    return obj;
-  }
-
-  // Return the results of applying the iteratee to each element.
-  function map(obj, iteratee, context) {
-    iteratee = cb(iteratee, context);
-    var _keys = !isArrayLike(obj) && keys(obj),
-        length = (_keys || obj).length,
-        results = Array(length);
-    for (var index = 0; index < length; index++) {
-      var currentKey = _keys ? _keys[index] : index;
-      results[index] = iteratee(obj[currentKey], currentKey, obj);
-    }
-    return results;
-  }
-
-  // Internal helper to create a reducing function, iterating left or right.
-  function createReduce(dir) {
-    // Wrap code that reassigns argument variables in a separate function than
-    // the one that accesses `arguments.length` to avoid a perf hit. (#1991)
-    var reducer = function(obj, iteratee, memo, initial) {
-      var _keys = !isArrayLike(obj) && keys(obj),
-          length = (_keys || obj).length,
-          index = dir > 0 ? 0 : length - 1;
-      if (!initial) {
-        memo = obj[_keys ? _keys[index] : index];
-        index += dir;
-      }
-      for (; index >= 0 && index < length; index += dir) {
-        var currentKey = _keys ? _keys[index] : index;
-        memo = iteratee(memo, obj[currentKey], currentKey, obj);
-      }
-      return memo;
-    };
-
-    return function(obj, iteratee, memo, context) {
-      var initial = arguments.length >= 3;
-      return reducer(obj, optimizeCb(iteratee, context, 4), memo, initial);
-    };
-  }
-
-  // **Reduce** builds up a single result from a list of values, aka `inject`,
-  // or `foldl`.
-  var reduce = createReduce(1);
-
-  // The right-associative version of reduce, also known as `foldr`.
-  var reduceRight = createReduce(-1);
-
-  // Return all the elements that pass a truth test.
-  function filter(obj, predicate, context) {
-    var results = [];
-    predicate = cb(predicate, context);
-    each(obj, function(value, index, list) {
-      if (predicate(value, index, list)) results.push(value);
-    });
-    return results;
-  }
-
-  // Return all the elements for which a truth test fails.
-  function reject(obj, predicate, context) {
-    return filter(obj, negate(cb(predicate)), context);
-  }
-
-  // Determine whether all of the elements pass a truth test.
-  function every(obj, predicate, context) {
-    predicate = cb(predicate, context);
-    var _keys = !isArrayLike(obj) && keys(obj),
-        length = (_keys || obj).length;
-    for (var index = 0; index < length; index++) {
-      var currentKey = _keys ? _keys[index] : index;
-      if (!predicate(obj[currentKey], currentKey, obj)) return false;
-    }
-    return true;
-  }
-
-  // Determine if at least one element in the object passes a truth test.
-  function some(obj, predicate, context) {
-    predicate = cb(predicate, context);
-    var _keys = !isArrayLike(obj) && keys(obj),
-        length = (_keys || obj).length;
-    for (var index = 0; index < length; index++) {
-      var currentKey = _keys ? _keys[index] : index;
-      if (predicate(obj[currentKey], currentKey, obj)) return true;
-    }
-    return false;
-  }
-
-  // Determine if the array or object contains a given item (using `===`).
-  function contains(obj, item, fromIndex, guard) {
-    if (!isArrayLike(obj)) obj = values(obj);
-    if (typeof fromIndex != 'number' || guard) fromIndex = 0;
-    return indexOf(obj, item, fromIndex) >= 0;
-  }
-
-  // Invoke a method (with arguments) on every item in a collection.
-  var invoke = restArguments(function(obj, path, args) {
-    var contextPath, func;
-    if (isFunction$1(path)) {
-      func = path;
-    } else {
-      path = toPath(path);
-      contextPath = path.slice(0, -1);
-      path = path[path.length - 1];
-    }
-    return map(obj, function(context) {
-      var method = func;
-      if (!method) {
-        if (contextPath && contextPath.length) {
-          context = deepGet(context, contextPath);
-        }
-        if (context == null) return void 0;
-        method = context[path];
-      }
-      return method == null ? method : method.apply(context, args);
-    });
-  });
-
-  // Convenience version of a common use case of `_.map`: fetching a property.
-  function pluck(obj, key) {
-    return map(obj, property(key));
-  }
-
-  // Convenience version of a common use case of `_.filter`: selecting only
-  // objects containing specific `key:value` pairs.
-  function where(obj, attrs) {
-    return filter(obj, matcher(attrs));
-  }
-
-  // Return the maximum element (or element-based computation).
-  function max(obj, iteratee, context) {
-    var result = -Infinity, lastComputed = -Infinity,
-        value, computed;
-    if (iteratee == null || (typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null)) {
-      obj = isArrayLike(obj) ? obj : values(obj);
-      for (var i = 0, length = obj.length; i < length; i++) {
-        value = obj[i];
-        if (value != null && value > result) {
-          result = value;
-        }
-      }
-    } else {
-      iteratee = cb(iteratee, context);
-      each(obj, function(v, index, list) {
-        computed = iteratee(v, index, list);
-        if (computed > lastComputed || (computed === -Infinity && result === -Infinity)) {
-          result = v;
-          lastComputed = computed;
-        }
-      });
-    }
-    return result;
-  }
-
-  // Return the minimum element (or element-based computation).
-  function min(obj, iteratee, context) {
-    var result = Infinity, lastComputed = Infinity,
-        value, computed;
-    if (iteratee == null || (typeof iteratee == 'number' && typeof obj[0] != 'object' && obj != null)) {
-      obj = isArrayLike(obj) ? obj : values(obj);
-      for (var i = 0, length = obj.length; i < length; i++) {
-        value = obj[i];
-        if (value != null && value < result) {
-          result = value;
-        }
-      }
-    } else {
-      iteratee = cb(iteratee, context);
-      each(obj, function(v, index, list) {
-        computed = iteratee(v, index, list);
-        if (computed < lastComputed || (computed === Infinity && result === Infinity)) {
-          result = v;
-          lastComputed = computed;
-        }
-      });
-    }
-    return result;
-  }
-
-  // Safely create a real, live array from anything iterable.
-  var reStrSymbol = /[^\ud800-\udfff]|[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g;
-  function toArray(obj) {
-    if (!obj) return [];
-    if (isArray(obj)) return slice.call(obj);
-    if (isString(obj)) {
-      // Keep surrogate pair characters together.
-      return obj.match(reStrSymbol);
-    }
-    if (isArrayLike(obj)) return map(obj, identity);
-    return values(obj);
-  }
-
-  // Sample **n** random values from a collection using the modern version of the
-  // [Fisher-Yates shuffle](https://en.wikipedia.org/wiki/Fisher–Yates_shuffle).
-  // If **n** is not specified, returns a single random element.
-  // The internal `guard` argument allows it to work with `_.map`.
-  function sample(obj, n, guard) {
-    if (n == null || guard) {
-      if (!isArrayLike(obj)) obj = values(obj);
-      return obj[random(obj.length - 1)];
-    }
-    var sample = toArray(obj);
-    var length = getLength(sample);
-    n = Math.max(Math.min(n, length), 0);
-    var last = length - 1;
-    for (var index = 0; index < n; index++) {
-      var rand = random(index, last);
-      var temp = sample[index];
-      sample[index] = sample[rand];
-      sample[rand] = temp;
-    }
-    return sample.slice(0, n);
-  }
-
-  // Shuffle a collection.
-  function shuffle(obj) {
-    return sample(obj, Infinity);
-  }
-
-  // Sort the object's values by a criterion produced by an iteratee.
-  function sortBy(obj, iteratee, context) {
-    var index = 0;
-    iteratee = cb(iteratee, context);
-    return pluck(map(obj, function(value, key, list) {
-      return {
-        value: value,
-        index: index++,
-        criteria: iteratee(value, key, list)
-      };
-    }).sort(function(left, right) {
-      var a = left.criteria;
-      var b = right.criteria;
-      if (a !== b) {
-        if (a > b || a === void 0) return 1;
-        if (a < b || b === void 0) return -1;
-      }
-      return left.index - right.index;
-    }), 'value');
-  }
-
-  // An internal function used for aggregate "group by" operations.
-  function group(behavior, partition) {
-    return function(obj, iteratee, context) {
-      var result = partition ? [[], []] : {};
-      iteratee = cb(iteratee, context);
-      each(obj, function(value, index) {
-        var key = iteratee(value, index, obj);
-        behavior(result, value, key);
-      });
-      return result;
-    };
-  }
-
-  // Groups the object's values by a criterion. Pass either a string attribute
-  // to group by, or a function that returns the criterion.
-  var groupBy = group(function(result, value, key) {
-    if (has$1(result, key)) result[key].push(value); else result[key] = [value];
-  });
-
-  // Indexes the object's values by a criterion, similar to `_.groupBy`, but for
-  // when you know that your index values will be unique.
-  var indexBy = group(function(result, value, key) {
-    result[key] = value;
-  });
-
-  // Counts instances of an object that group by a certain criterion. Pass
-  // either a string attribute to count by, or a function that returns the
-  // criterion.
-  var countBy = group(function(result, value, key) {
-    if (has$1(result, key)) result[key]++; else result[key] = 1;
-  });
-
-  // Split a collection into two arrays: one whose elements all pass the given
-  // truth test, and one whose elements all do not pass the truth test.
-  var partition = group(function(result, value, pass) {
-    result[pass ? 0 : 1].push(value);
-  }, true);
-
-  // Return the number of elements in a collection.
-  function size(obj) {
-    if (obj == null) return 0;
-    return isArrayLike(obj) ? obj.length : keys(obj).length;
-  }
-
-  // Internal `_.pick` helper function to determine whether `key` is an enumerable
-  // property name of `obj`.
-  function keyInObj(value, key, obj) {
-    return key in obj;
-  }
-
-  // Return a copy of the object only containing the allowed properties.
-  var pick = restArguments(function(obj, keys) {
-    var result = {}, iteratee = keys[0];
-    if (obj == null) return result;
-    if (isFunction$1(iteratee)) {
-      if (keys.length > 1) iteratee = optimizeCb(iteratee, keys[1]);
-      keys = allKeys(obj);
-    } else {
-      iteratee = keyInObj;
-      keys = flatten$1(keys, false, false);
-      obj = Object(obj);
-    }
-    for (var i = 0, length = keys.length; i < length; i++) {
-      var key = keys[i];
-      var value = obj[key];
-      if (iteratee(value, key, obj)) result[key] = value;
-    }
-    return result;
-  });
-
-  // Return a copy of the object without the disallowed properties.
-  var omit = restArguments(function(obj, keys) {
-    var iteratee = keys[0], context;
-    if (isFunction$1(iteratee)) {
-      iteratee = negate(iteratee);
-      if (keys.length > 1) context = keys[1];
-    } else {
-      keys = map(flatten$1(keys, false, false), String);
-      iteratee = function(value, key) {
-        return !contains(keys, key);
-      };
-    }
-    return pick(obj, iteratee, context);
-  });
-
-  // Returns everything but the last entry of the array. Especially useful on
-  // the arguments object. Passing **n** will return all the values in
-  // the array, excluding the last N.
-  function initial(array, n, guard) {
-    return slice.call(array, 0, Math.max(0, array.length - (n == null || guard ? 1 : n)));
-  }
-
-  // Get the first element of an array. Passing **n** will return the first N
-  // values in the array. The **guard** check allows it to work with `_.map`.
-  function first(array, n, guard) {
-    if (array == null || array.length < 1) return n == null || guard ? void 0 : [];
-    if (n == null || guard) return array[0];
-    return initial(array, array.length - n);
-  }
-
-  // Returns everything but the first entry of the `array`. Especially useful on
-  // the `arguments` object. Passing an **n** will return the rest N values in the
-  // `array`.
-  function rest(array, n, guard) {
-    return slice.call(array, n == null || guard ? 1 : n);
-  }
-
-  // Get the last element of an array. Passing **n** will return the last N
-  // values in the array.
-  function last(array, n, guard) {
-    if (array == null || array.length < 1) return n == null || guard ? void 0 : [];
-    if (n == null || guard) return array[array.length - 1];
-    return rest(array, Math.max(0, array.length - n));
-  }
-
-  // Trim out all falsy values from an array.
-  function compact(array) {
-    return filter(array, Boolean);
-  }
-
-  // Flatten out an array, either recursively (by default), or up to `depth`.
-  // Passing `true` or `false` as `depth` means `1` or `Infinity`, respectively.
-  function flatten(array, depth) {
-    return flatten$1(array, depth, false);
-  }
-
-  // Take the difference between one array and a number of other arrays.
-  // Only the elements present in just the first array will remain.
-  var difference = restArguments(function(array, rest) {
-    rest = flatten$1(rest, true, true);
-    return filter(array, function(value){
-      return !contains(rest, value);
-    });
-  });
-
-  // Return a version of the array that does not contain the specified value(s).
-  var without = restArguments(function(array, otherArrays) {
-    return difference(array, otherArrays);
-  });
-
-  // Produce a duplicate-free version of the array. If the array has already
-  // been sorted, you have the option of using a faster algorithm.
-  // The faster algorithm will not work with an iteratee if the iteratee
-  // is not a one-to-one function, so providing an iteratee will disable
-  // the faster algorithm.
-  function uniq(array, isSorted, iteratee, context) {
-    if (!isBoolean(isSorted)) {
-      context = iteratee;
-      iteratee = isSorted;
-      isSorted = false;
-    }
-    if (iteratee != null) iteratee = cb(iteratee, context);
-    var result = [];
-    var seen = [];
-    for (var i = 0, length = getLength(array); i < length; i++) {
-      var value = array[i],
-          computed = iteratee ? iteratee(value, i, array) : value;
-      if (isSorted && !iteratee) {
-        if (!i || seen !== computed) result.push(value);
-        seen = computed;
-      } else if (iteratee) {
-        if (!contains(seen, computed)) {
-          seen.push(computed);
-          result.push(value);
-        }
-      } else if (!contains(result, value)) {
-        result.push(value);
-      }
-    }
-    return result;
-  }
-
-  // Produce an array that contains the union: each distinct element from all of
-  // the passed-in arrays.
-  var union = restArguments(function(arrays) {
-    return uniq(flatten$1(arrays, true, true));
-  });
-
-  // Produce an array that contains every item shared between all the
-  // passed-in arrays.
-  function intersection(array) {
-    var result = [];
-    var argsLength = arguments.length;
-    for (var i = 0, length = getLength(array); i < length; i++) {
-      var item = array[i];
-      if (contains(result, item)) continue;
-      var j;
-      for (j = 1; j < argsLength; j++) {
-        if (!contains(arguments[j], item)) break;
-      }
-      if (j === argsLength) result.push(item);
-    }
-    return result;
-  }
-
-  // Complement of zip. Unzip accepts an array of arrays and groups
-  // each array's elements on shared indices.
-  function unzip(array) {
-    var length = (array && max(array, getLength).length) || 0;
-    var result = Array(length);
-
-    for (var index = 0; index < length; index++) {
-      result[index] = pluck(array, index);
-    }
-    return result;
-  }
-
-  // Zip together multiple lists into a single array -- elements that share
-  // an index go together.
-  var zip = restArguments(unzip);
-
-  // Converts lists into objects. Pass either a single array of `[key, value]`
-  // pairs, or two parallel arrays of the same length -- one of keys, and one of
-  // the corresponding values. Passing by pairs is the reverse of `_.pairs`.
-  function object(list, values) {
-    var result = {};
-    for (var i = 0, length = getLength(list); i < length; i++) {
-      if (values) {
-        result[list[i]] = values[i];
-      } else {
-        result[list[i][0]] = list[i][1];
-      }
-    }
-    return result;
-  }
-
-  // Generate an integer Array containing an arithmetic progression. A port of
-  // the native Python `range()` function. See
-  // [the Python documentation](https://docs.python.org/library/functions.html#range).
-  function range(start, stop, step) {
-    if (stop == null) {
-      stop = start || 0;
-      start = 0;
-    }
-    if (!step) {
-      step = stop < start ? -1 : 1;
-    }
-
-    var length = Math.max(Math.ceil((stop - start) / step), 0);
-    var range = Array(length);
-
-    for (var idx = 0; idx < length; idx++, start += step) {
-      range[idx] = start;
-    }
-
-    return range;
-  }
-
-  // Chunk a single array into multiple arrays, each containing `count` or fewer
-  // items.
-  function chunk(array, count) {
-    if (count == null || count < 1) return [];
-    var result = [];
-    var i = 0, length = array.length;
-    while (i < length) {
-      result.push(slice.call(array, i, i += count));
-    }
-    return result;
-  }
-
-  // Helper function to continue chaining intermediate results.
-  function chainResult(instance, obj) {
-    return instance._chain ? _$1(obj).chain() : obj;
-  }
-
-  // Add your own custom functions to the Underscore object.
-  function mixin(obj) {
-    each(functions(obj), function(name) {
-      var func = _$1[name] = obj[name];
-      _$1.prototype[name] = function() {
-        var args = [this._wrapped];
-        push.apply(args, arguments);
-        return chainResult(this, func.apply(_$1, args));
-      };
-    });
-    return _$1;
-  }
-
-  // Add all mutator `Array` functions to the wrapper.
-  each(['pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'], function(name) {
-    var method = ArrayProto[name];
-    _$1.prototype[name] = function() {
-      var obj = this._wrapped;
-      if (obj != null) {
-        method.apply(obj, arguments);
-        if ((name === 'shift' || name === 'splice') && obj.length === 0) {
-          delete obj[0];
-        }
-      }
-      return chainResult(this, obj);
-    };
-  });
-
-  // Add all accessor `Array` functions to the wrapper.
-  each(['concat', 'join', 'slice'], function(name) {
-    var method = ArrayProto[name];
-    _$1.prototype[name] = function() {
-      var obj = this._wrapped;
-      if (obj != null) obj = method.apply(obj, arguments);
-      return chainResult(this, obj);
-    };
-  });
-
-  // Named Exports
-
-  var allExports = {
-    __proto__: null,
-    VERSION: VERSION,
-    restArguments: restArguments,
-    isObject: isObject,
-    isNull: isNull,
-    isUndefined: isUndefined,
-    isBoolean: isBoolean,
-    isElement: isElement,
-    isString: isString,
-    isNumber: isNumber,
-    isDate: isDate,
-    isRegExp: isRegExp,
-    isError: isError,
-    isSymbol: isSymbol,
-    isArrayBuffer: isArrayBuffer,
-    isDataView: isDataView$1,
-    isArray: isArray,
-    isFunction: isFunction$1,
-    isArguments: isArguments$1,
-    isFinite: isFinite$1,
-    isNaN: isNaN$1,
-    isTypedArray: isTypedArray$1,
-    isEmpty: isEmpty,
-    isMatch: isMatch,
-    isEqual: isEqual,
-    isMap: isMap,
-    isWeakMap: isWeakMap,
-    isSet: isSet,
-    isWeakSet: isWeakSet,
-    keys: keys,
-    allKeys: allKeys,
-    values: values,
-    pairs: pairs,
-    invert: invert,
-    functions: functions,
-    methods: functions,
-    extend: extend,
-    extendOwn: extendOwn,
-    assign: extendOwn,
-    defaults: defaults,
-    create: create,
-    clone: clone,
-    tap: tap,
-    get: get,
-    has: has,
-    mapObject: mapObject,
-    identity: identity,
-    constant: constant,
-    noop: noop,
-    toPath: toPath$1,
-    property: property,
-    propertyOf: propertyOf,
-    matcher: matcher,
-    matches: matcher,
-    times: times,
-    random: random,
-    now: now,
-    escape: _escape,
-    unescape: _unescape,
-    templateSettings: templateSettings,
-    template: template,
-    result: result,
-    uniqueId: uniqueId,
-    chain: chain,
-    iteratee: iteratee,
-    partial: partial,
-    bind: bind,
-    bindAll: bindAll,
-    memoize: memoize,
-    delay: delay,
-    defer: defer,
-    throttle: throttle,
-    debounce: debounce,
-    wrap: wrap,
-    negate: negate,
-    compose: compose,
-    after: after,
-    before: before,
-    once: once,
-    findKey: findKey,
-    findIndex: findIndex,
-    findLastIndex: findLastIndex,
-    sortedIndex: sortedIndex,
-    indexOf: indexOf,
-    lastIndexOf: lastIndexOf,
-    find: find,
-    detect: find,
-    findWhere: findWhere,
-    each: each,
-    forEach: each,
-    map: map,
-    collect: map,
-    reduce: reduce,
-    foldl: reduce,
-    inject: reduce,
-    reduceRight: reduceRight,
-    foldr: reduceRight,
-    filter: filter,
-    select: filter,
-    reject: reject,
-    every: every,
-    all: every,
-    some: some,
-    any: some,
-    contains: contains,
-    includes: contains,
-    include: contains,
-    invoke: invoke,
-    pluck: pluck,
-    where: where,
-    max: max,
-    min: min,
-    shuffle: shuffle,
-    sample: sample,
-    sortBy: sortBy,
-    groupBy: groupBy,
-    indexBy: indexBy,
-    countBy: countBy,
-    partition: partition,
-    toArray: toArray,
-    size: size,
-    pick: pick,
-    omit: omit,
-    first: first,
-    head: first,
-    take: first,
-    initial: initial,
-    last: last,
-    rest: rest,
-    tail: rest,
-    drop: rest,
-    compact: compact,
-    flatten: flatten,
-    without: without,
-    uniq: uniq,
-    unique: uniq,
-    union: union,
-    intersection: intersection,
-    difference: difference,
-    unzip: unzip,
-    transpose: unzip,
-    zip: zip,
-    object: object,
-    range: range,
-    chunk: chunk,
-    mixin: mixin,
-    'default': _$1
-  };
-
-  // Default Export
-
-  // Add all of the Underscore functions to the wrapper object.
-  var _ = mixin(allExports);
-  // Legacy Node.js API.
-  _._ = _;
-
-  return _;
-
-})));
-
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}]},{},[1])(1)
 });
