@@ -502,6 +502,11 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
 		}
 	}
+	private getLayers() {
+        const layers = Object.keys(this._layerLabels)
+        layers.sort((a,b) => a.localeCompare(b))
+        return layers
+    }
 
 	/**
 	 * Draws the layer labels to the canvas.
@@ -509,7 +514,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private drawLayerLabels () {
 		let row = 0
 		// Iterate through layers.
-		for (let layerName of Object.keys(this._layerLabels)) {
+		for (let layerName of this.getLayers()) {
 
 			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
 			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
