@@ -8,7 +8,7 @@
         <script src="../dist/js/timeline-visualizer.js"></script>
 
         <script>
-        
+
         var visuals = new TimelineVisualizer.TimelineVisualizer('timeline', {
 			drawPlayhead: true,
 		})
@@ -29,8 +29,7 @@
 				id: 'video0',
 				layer: '0',
 				enable: {
-					start: '#block0',
-					duration: 150
+					while: '#block0',
 				},
 				content: {}
 			},
@@ -38,7 +37,7 @@
 				id: 'commercial',
 				layer: '0',
 				enable: {
-					start: '#video0.start + #video0.duration / 2',
+					start: '#block0.end',
 					duration: 30
 				},
 				content: {}
@@ -126,7 +125,7 @@
 		/*
 		setTimeout(() => {
 
-			
+
 			var timelineAdded = [
 				{
 					id: 'video2',
@@ -178,7 +177,7 @@
 			visuals.updateTimeline(timelineAdded)
 		}, 1000)
 		*/
-        
+
         </script>
     </body>
 </html>

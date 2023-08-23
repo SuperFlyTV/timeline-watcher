@@ -1,13 +1,13 @@
 import * as isEqual from 'lodash.isequal'
 
 import {
-	Resolver,
 	TimelineObject,
 	ResolveOptions,
 	ResolvedTimelineObjects,
 	TimelineObjectInstance,
 	ResolvedTimelineObject,
-	ResolvedStates
+	resolveTimeline,
+	ResolvedTimeline
 } from 'superfly-timeline'
 import { EventEmitter } from 'events'
 
@@ -164,7 +164,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private readonly _layerLabelWidthProportionOfCanvas = LABEL_WIDTH_OF_TIMELINE
 
 	/** Timeline currently drawn. */
-	private _resolvedStates: ResolvedStates | undefined
+	private _resolvedTimeline: ResolvedTimeline | undefined
 	/** Layers on timeline. */
 	private _layerLabels: Layers = {}
 	/** State of the timeline. */
@@ -349,7 +349,7 @@ export class TimelineVisualizer extends EventEmitter {
 		if (this._timelineResolveAuto) {
 			this.updateTimelineResolveWindow()
 		}
-		if (this._resolvedStates === undefined) { // If first time this runs
+		if (this._resolvedTimeline === undefined) { // If first time this runs
 
 			// Set timeline start and end times.
 			if (options2.time !== undefined) {
@@ -380,24 +380,24 @@ export class TimelineVisualizer extends EventEmitter {
 
 		// Resolve the timeline.
 		const startResolve = Date.now()
-		const resolvedTimeline = Resolver.resolveTimeline(this.latestTimeline, options2)
-		let newResolvedStates = Resolver.resolveAllStates(resolvedTimeline)
+		const resolvedTimeline = resolveTimeline(this.latestTimeline, options2)
 
-		if (this._resolvedStates === undefined) { // If first time this runs
-			this._resolvedStates = newResolvedStates
+
+		if (this._resolvedTimeline === undefined) { // If first time this runs
+			this._resolvedTimeline = resolvedTimeline
 		} else {
 
 			if (this._drawPlayhead) {
 				// Trim the current timeline:
-				if (newResolvedStates) {
+				if (resolvedTimeline) {
 
 					// Merge the timelines.
-					this._resolvedStates = this.mergeTimelineObjects(this._resolvedStates, newResolvedStates, fromNewTimeline)
+					this._resolvedTimeline = this.mergeTimelineObjects(this._resolvedTimeline, resolvedTimeline, fromNewTimeline)
 				}
 			} else {
 				// Otherwise we only see one timeline at a time.
 				// Overwrite the previous timeline:
-				this._resolvedStates = newResolvedStates
+				this._resolvedTimeline = resolvedTimeline
 			}
 		}
 
@@ -502,6 +502,11 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
 		}
 	}
+	private getLayers() {
+		const layers = Object.keys(this._layerLabels)
+		layers.sort((a,b) => a.localeCompare(b))
+		return layers
+	}
 
 	/**
 	 * Draws the layer labels to the canvas.
@@ -509,7 +514,7 @@ export class TimelineVisualizer extends EventEmitter {
 	private drawLayerLabels () {
 		let row = 0
 		// Iterate through layers.
-		for (let layerName of Object.keys(this._layerLabels)) {
+		for (let layerName of this.getLayers()) {
 
 			this._canvas.fillStyle = COLOR_LABEL_BACKGROUND
 			this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight)
@@ -604,7 +609,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 */
 	private getLayersToDraw () {
 		this._hoveredObjectMap = {}
-		const layersArray: string[] = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : []
+		const layersArray: string[] = this._resolvedTimeline ? Object.keys(this._resolvedTimeline.layers) : []
 
 		layersArray.sort((a, b) => {
 			if (a > b) return 1
@@ -634,7 +639,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this.drawLayerLabels()
 
 		// Recompute objects positions
-		this._timelineState = this.getTimelineDrawState(this._resolvedStates)
+		this._timelineState = this.getTimelineDrawState(this._resolvedTimeline)
 
 		// Draw the current state.
 		this.drawTimelineState(this._timelineState)
@@ -669,10 +674,10 @@ export class TimelineVisualizer extends EventEmitter {
 
 	/**
 	 * Returns the draw states for all timeline objects.
-	 * @param {ResolvedStates} timeline Timeline to draw.
+	 * @param {ResolvedTimeline} timeline Timeline to draw.
 	 * @returns {TimelineDrawState} State of time-based objects.
 	 */
-	private getTimelineDrawState (timeline: ResolvedStates | undefined): TimelineDrawState {
+	private getTimelineDrawState (timeline: ResolvedTimeline | undefined): TimelineDrawState {
 		let currentDrawState: TimelineDrawState = {}
 		if (timeline) {
 			for (let objId in timeline.objects) {
@@ -957,8 +962,8 @@ export class TimelineVisualizer extends EventEmitter {
 								// If we are hovering over a timeline object.
 								if (object.type === 'timelineObject') {
 									// Get the timeline object and the instance being hovered over.
-									if (this._resolvedStates) {
-										let timelineObject = this._resolvedStates.objects[object.objectRefId]
+									if (this._resolvedTimeline) {
+										let timelineObject = this._resolvedTimeline.objects[object.objectRefId]
 
 										let instance = timelineObject.resolved.instances.find(instance => instance.id === object.instanceId)
 										if (instance) {
@@ -1111,7 +1116,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param timeline Timeline to trim.
 	 * @param trim Times to trim between.
 	 */
-	private trimTimeline (timeline: ResolvedStates, trim: TrimProperties): ResolvedStates {
+	private trimTimeline (timeline: ResolvedTimeline, trim: TrimProperties): ResolvedTimeline {
 		// The new resolved objects.
 		let newObjects: ResolvedTimelineObjects = {}
 
@@ -1165,11 +1170,8 @@ export class TimelineVisualizer extends EventEmitter {
 					id: obj.id,
 					layer: obj.layer,
 					resolved: {
+						...obj.resolved,
 						instances: [],
-						levelDeep: obj.resolved.levelDeep,
-						resolved: obj.resolved.resolved,
-						resolving: obj.resolved.resolving,
-						directReferences: obj.resolved.directReferences,
 					}
 				}
 				newObjects[objId] = newObject
@@ -1181,9 +1183,7 @@ export class TimelineVisualizer extends EventEmitter {
 			classes:	timeline.classes,
 			layers:		timeline.layers,
 			objects:	newObjects,
-			options:	timeline.options,
 			statistics:	timeline.statistics,
-			state:		timeline.state,
 			nextEvents:	timeline.nextEvents
 		}
 	}
@@ -1194,7 +1194,7 @@ export class TimelineVisualizer extends EventEmitter {
 	 * @param present Newer timeline.
 	 * @returns {ResolvedTimeline} containing merged timelines.
 	 */
-	private mergeTimelineObjects (past: ResolvedStates, present: ResolvedStates, fromNewTimeline: boolean): ResolvedStates {
+	private mergeTimelineObjects (past: ResolvedTimeline, present: ResolvedTimeline, fromNewTimeline: boolean): ResolvedTimeline {
 		const resultingObjects: ResolvedTimelineObjects = {}
 		if (fromNewTimeline) {
 			past = this.trimTimeline(
@@ -1309,7 +1309,7 @@ export class TimelineVisualizer extends EventEmitter {
 			})
 		}
 
-		const resultingLayers: ResolvedStates['layers'] = {}
+		const resultingLayers: ResolvedTimeline['layers'] = {}
 		Object.keys(resultingObjects).forEach(key => {
 			const obj = resultingObjects[key]
 			const layer = obj.layer + ''

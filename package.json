@@ -99,7 +99,7 @@
     "tslint": "^5.13.1",
     "tslint-config-standard": "^8.0.1",
     "typedoc": "^0.14.2",
-    "typescript": "^3.2.0",
+    "typescript": "^5",
     "uglify-js": "^3.4.9",
     "vinyl-buffer": "^1.0.1",
     "vinyl-source-stream": "^2.0.0"
@@ -115,6 +115,6 @@
     "fabric": "^2.6.0",
     "lodash.isequal": "^4.5.0",
     "lodash.merge": "^4.6.2",
-    "superfly-timeline": "^8.2.8"
+    "superfly-timeline": "9.0.0-nightly-wip-big-rewrite-20230814-192948-870dbc7.0"
   }
 }
