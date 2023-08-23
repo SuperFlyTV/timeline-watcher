@@ -502,11 +502,11 @@ export class TimelineVisualizer extends EventEmitter {
 			this._rowsTotalHeight = this._rowHeight * this._numberOfLayers
 		}
 	}
-	private getLayers() {
-		const layers = Object.keys(this._layerLabels)
-		layers.sort((a,b) => a.localeCompare(b))
-		return layers
-	}
+	private getLayers(): string[] {
+        const layers = Object.entries(this._layerLabels)
+        layers.sort((a,b) => a[1]- b[1])
+        return layers.map(l => l[0])
+    }
 
 	/**
 	 * Draws the layer labels to the canvas.
@@ -611,11 +611,7 @@ export class TimelineVisualizer extends EventEmitter {
 		this._hoveredObjectMap = {}
 		const layersArray: string[] = this._resolvedTimeline ? Object.keys(this._resolvedTimeline.layers) : []
 
-		layersArray.sort((a, b) => {
-			if (a > b) return 1
-			if (a < b) return 1
-			return 0
-		})
+		layersArray.sort((a, b) => a.localeCompare(b))
 
 		const layers: Layers = {}
 
