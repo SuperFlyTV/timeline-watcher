@@ -191,6 +191,7 @@ export declare class TimelineVisualizer extends EventEmitter {
      */
     private calculateRowHeight;
     private updateLayerLabels;
+    private getLayers;
     /**
      * Draws the layer labels to the canvas.
      */
@@ -334,9 +335,9 @@ export declare class TimelineVisualizer extends EventEmitter {
     private istimeInView;
     private capXcoordToView;
     /** Zoom factor [pixels / time] */
-    private readonly pixelsWidthPerUnitTime;
+    private get pixelsWidthPerUnitTime();
     /** The range of the view [time] */
-    private readonly viewRange;
+    private get viewRange();
     /** The end time of the view [time] */
-    private readonly viewEndTime;
+    private get viewEndTime();
 }

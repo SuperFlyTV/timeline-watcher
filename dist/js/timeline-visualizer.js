@@ -7,6 +7,7 @@ tslib_1.__exportStar(require("./lib/timelineVisualizer"), exports);
 },{"./lib/timelineVisualizer":2,"tslib":16}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.TimelineVisualizer = void 0;
 const isEqual = require("lodash.isequal");
 const superfly_timeline_1 = require("superfly-timeline");
 const events_1 = require("events");
@@ -291,13 +292,18 @@ class TimelineVisualizer extends events_1.EventEmitter {
             this._rowsTotalHeight = this._rowHeight * this._numberOfLayers;
         }
     }
+    getLayers() {
+        const layers = Object.keys(this._layerLabels);
+        layers.sort((a, b) => a.localeCompare(b));
+        return layers;
+    }
     /**
      * Draws the layer labels to the canvas.
      */
     drawLayerLabels() {
         let row = 0;
         // Iterate through layers.
-        for (let layerName of Object.keys(this._layerLabels)) {
+        for (let layerName of this.getLayers()) {
             this._canvas.fillStyle = COLOR_LABEL_BACKGROUND;
             this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight);
             this._canvas.fillStyle = TEXT_COLOR;
@@ -973,7 +979,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 resultingLayers[layer] = [];
             resultingLayers[layer].push(key);
         });
-        return Object.assign({}, present, { objects: resultingObjects, layers: resultingLayers });
+        return Object.assign(Object.assign({}, present), { objects: resultingObjects, layers: resultingLayers });
     }
     updateTimelineResolveWindow() {
         const { start, end } = this.getExpandedStartEndTime(1);
@@ -1585,7 +1591,7 @@ function functionBindPolyfill(context) {
 }
 
 },{}],4:[function(require,module,exports){
-(function (global){
+(function (global){(function (){
 /**
  * Lodash (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -3435,7 +3441,7 @@ function stubFalse() {
 
 module.exports = isEqual;
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}],5:[function(require,module,exports){
 "use strict";
@@ -5961,7 +5967,7 @@ function validateKeyframe(keyframe, strict) {
 exports.validateKeyframe = validateKeyframe;
 
 },{"underscore":17}],15:[function(require,module,exports){
-(function (global){
+(function (global){(function (){
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
 
@@ -6280,24 +6286,25 @@ var __createBinding;
     exporter("__classPrivateFieldIn", __classPrivateFieldIn);
 });
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}],16:[function(require,module,exports){
-(function (global){
+(function (global){(function (){
 /*! *****************************************************************************
-Copyright (c) Microsoft Corporation. All rights reserved.
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License. You may obtain a copy of the
-License at http://www.apache.org/licenses/LICENSE-2.0
+Copyright (c) Microsoft Corporation.
 
-THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
-WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
 
-See the Apache Version 2.0 License for specific language governing permissions
-and limitations under the License.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
+
 /* global global, define, System, Reflect, Promise */
 var __extends;
 var __assign;
@@ -6311,6 +6318,7 @@ var __exportStar;
 var __values;
 var __read;
 var __spread;
+var __spreadArrays;
 var __await;
 var __asyncGenerator;
 var __asyncDelegator;
@@ -6318,6 +6326,9 @@ var __asyncValues;
 var __makeTemplateObject;
 var __importStar;
 var __importDefault;
+var __classPrivateFieldGet;
+var __classPrivateFieldSet;
+var __createBinding;
 (function (factory) {
     var root = typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : {};
     if (typeof define === "function" && define.amd) {
@@ -6365,8 +6376,10 @@ var __importDefault;
         for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
             t[p] = s[p];
         if (s != null && typeof Object.getOwnPropertySymbols === "function")
-            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) if (e.indexOf(p[i]) < 0)
-                t[p[i]] = s[p[i]];
+            for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+                if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                    t[p[i]] = s[p[i]];
+            }
         return t;
     };
 
@@ -6386,10 +6399,11 @@ var __importDefault;
     };
 
     __awaiter = function (thisArg, _arguments, P, generator) {
+        function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
         return new (P || (P = Promise))(function (resolve, reject) {
             function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
             function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-            function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+            function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
             step((generator = generator.apply(thisArg, _arguments || [])).next());
         });
     };
@@ -6422,19 +6436,25 @@ var __importDefault;
         }
     };
 
+    __createBinding = function(o, m, k, k2) {
+        if (k2 === undefined) k2 = k;
+        o[k2] = m[k];
+    };
+
     __exportStar = function (m, exports) {
-        for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];
+        for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) exports[p] = m[p];
     };
 
     __values = function (o) {
-        var m = typeof Symbol === "function" && o[Symbol.iterator], i = 0;
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
         if (m) return m.call(o);
-        return {
+        if (o && typeof o.length === "number") return {
             next: function () {
                 if (o && i >= o.length) o = void 0;
                 return { value: o && o[i++], done: !o };
             }
         };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
     };
 
     __read = function (o, n) {
@@ -6458,6 +6478,14 @@ var __importDefault;
         for (var ar = [], i = 0; i < arguments.length; i++)
             ar = ar.concat(__read(arguments[i]));
         return ar;
+    };
+
+    __spreadArrays = function () {
+        for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+        for (var r = Array(s), k = 0, i = 0; i < il; i++)
+            for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+                r[k] = a[j];
+        return r;
     };
 
     __await = function (v) {
@@ -6507,6 +6535,21 @@ var __importDefault;
         return (mod && mod.__esModule) ? mod : { "default": mod };
     };
 
+    __classPrivateFieldGet = function (receiver, privateMap) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to get private field on non-instance");
+        }
+        return privateMap.get(receiver);
+    };
+
+    __classPrivateFieldSet = function (receiver, privateMap, value) {
+        if (!privateMap.has(receiver)) {
+            throw new TypeError("attempted to set private field on non-instance");
+        }
+        privateMap.set(receiver, value);
+        return value;
+    };
+
     exporter("__extends", __extends);
     exporter("__assign", __assign);
     exporter("__rest", __rest);
@@ -6516,9 +6559,11 @@ var __importDefault;
     exporter("__awaiter", __awaiter);
     exporter("__generator", __generator);
     exporter("__exportStar", __exportStar);
+    exporter("__createBinding", __createBinding);
     exporter("__values", __values);
     exporter("__read", __read);
     exporter("__spread", __spread);
+    exporter("__spreadArrays", __spreadArrays);
     exporter("__await", __await);
     exporter("__asyncGenerator", __asyncGenerator);
     exporter("__asyncDelegator", __asyncDelegator);
@@ -6526,12 +6571,14 @@ var __importDefault;
     exporter("__makeTemplateObject", __makeTemplateObject);
     exporter("__importStar", __importStar);
     exporter("__importDefault", __importDefault);
+    exporter("__classPrivateFieldGet", __classPrivateFieldGet);
+    exporter("__classPrivateFieldSet", __classPrivateFieldSet);
 });
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}],17:[function(require,module,exports){
-(function (global){
+(function (global){(function (){
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
   typeof define === 'function' && define.amd ? define('underscore', factory) :
@@ -8575,7 +8622,7 @@ var __importDefault;
 })));
 
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}]},{},[1])(1)
 });

@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.TimelineVisualizer = void 0;
 const isEqual = require("lodash.isequal");
 const superfly_timeline_1 = require("superfly-timeline");
 const events_1 = require("events");
@@ -284,13 +285,18 @@ class TimelineVisualizer extends events_1.EventEmitter {
             this._rowsTotalHeight = this._rowHeight * this._numberOfLayers;
         }
     }
+    getLayers() {
+        const layers = Object.keys(this._layerLabels);
+        layers.sort((a, b) => a.localeCompare(b));
+        return layers;
+    }
     /**
      * Draws the layer labels to the canvas.
      */
     drawLayerLabels() {
         let row = 0;
         // Iterate through layers.
-        for (let layerName of Object.keys(this._layerLabels)) {
+        for (let layerName of this.getLayers()) {
             this._canvas.fillStyle = COLOR_LABEL_BACKGROUND;
             this._canvas.fillRect(0, row * this._rowHeight, this._layerLabelWidth, this._rowHeight);
             this._canvas.fillStyle = TEXT_COLOR;
@@ -966,7 +972,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
                 resultingLayers[layer] = [];
             resultingLayers[layer].push(key);
         });
-        return Object.assign({}, present, { objects: resultingObjects, layers: resultingLayers });
+        return Object.assign(Object.assign({}, present), { objects: resultingObjects, layers: resultingLayers });
     }
     updateTimelineResolveWindow() {
         const { start, end } = this.getExpandedStartEndTime(1);
