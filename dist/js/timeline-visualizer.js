@@ -382,13 +382,7 @@ class TimelineVisualizer extends events_1.EventEmitter {
     getLayersToDraw() {
         this._hoveredObjectMap = {};
         const layersArray = this._resolvedStates ? Object.keys(this._resolvedStates.layers) : [];
-        layersArray.sort((a, b) => {
-            if (a > b)
-                return 1;
-            if (a < b)
-                return 1;
-            return 0;
-        });
+        layersArray.sort((a, b) => a.localeCompare(b));
         const layers = {};
         layersArray.forEach((layerName, index) => {
             layers[layerName] = index;
